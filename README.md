@@ -100,6 +100,7 @@ VITE_TRACKER_PERSIST=localStorage
 - `docs/quickstart.md`
 - `docs/deploy-vercel.md`
 - `docs/client.md`
+- `docs/api.md`
 - `docs/schema.md`
 - `docs/security.md`
 
