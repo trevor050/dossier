@@ -25,6 +25,11 @@ This is the most common open-source pattern and the easiest to understand:
 
 If you run multiple websites, deploy multiple Dossier instances.
 
+To create a new instance quickly:
+
+- GitHub: click "Use this template" on the repo
+- CLI: `npx degit trevor050/dossier my-dossier`
+
 ## 5-minute setup
 
 ### 1) Deploy Dossier

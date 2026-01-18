@@ -2,9 +2,16 @@
 
 This guide assumes the standard setup: **one Dossier deployment per website**.
 
+## 0) Create a new instance
+
+Use one of these:
+
+- GitHub: click "Use this template" on the Dossier repo
+- CLI: `npx degit trevor050/dossier my-dossier`
+
 ## 1) Deploy Dossier
 
-Deploy this repo to Vercel (no framework required).
+Deploy the new repo to Vercel (no framework required).
 
 ## 2) Configure env vars
 
