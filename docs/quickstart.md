@@ -1,8 +1,8 @@
 # Quickstart
 
-## 1) Deploy
+## 1) Deploy Dossier
 
-Deploy this repo to Vercel. No build output is required because the project is primarily API routes + static admin UI.
+Deploy this repo to Vercel (no framework required).
 
 ## 2) Configure env vars
 
@@ -14,31 +14,50 @@ Required:
 Optional:
 
 - `IPINFO_TOKEN`
-- `REPORT_ALLOWED_HOSTS` (comma‑separated allowlist)
+- `REPORT_ALLOWED_HOSTS`
 - `BOT_SCORE_THRESHOLD` (default `6`)
 
-## 3) Wire the client
+## 3) Integrate with your site
 
-Copy `src/tracking/*` into your app and add the snippet below. Set `VITE_TRACKER_ENDPOINT` to your Dossier URL.
+### Option A: Same-origin proxy (recommended)
 
-```ts
-import { getTrackerConfig } from './tracking/config';
-import { createTelemetryClient } from './tracking/telemetry';
+Add a rewrite in your site's `vercel.json`:
 
-const trackerConfig = getTrackerConfig();
-const telemetry = createTelemetryClient({
-  endpoint: trackerConfig.endpoint ?? 'https://dossier.example.com/api/collect',
-  persistVisitorId: trackerConfig.persist,
-});
-
-telemetry.installGlobalTracking();
-telemetry.ensureVisit();
-
-window.addEventListener('pagehide', () => {
-  void telemetry.flush({ useBeacon: true });
-});
+```json
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://YOUR-DOSSIER-DOMAIN/api/:path*"
+    }
+  ]
+}
 ```
 
-## 4) Open the dashboard
+Then set:
 
-Visit `/api/admin` on your Dossier deployment and paste the `ADMIN_TOKEN`.
+```
+VITE_TRACKER_ENDPOINT=/api/collect
+```
+
+### Option B: Direct cross-origin
+
+Point your client at Dossier directly:
+
+```
+VITE_TRACKER_ENDPOINT=https://YOUR-DOSSIER-DOMAIN/api/collect
+```
+
+Add your site domain(s) to `REPORT_ALLOWED_HOSTS` in Dossier.
+
+## 4) Add the client snippet
+
+```ts
+import { initDossier } from './tracking';
+
+initDossier();
+```
+
+## 5) Open the dashboard
+
+Visit `/api/admin` and enter your `ADMIN_TOKEN`.

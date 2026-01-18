@@ -18,11 +18,24 @@ Optional:
 - `REPORT_ALLOWED_HOSTS`
 - `BOT_SCORE_THRESHOLD`
 
-## 3) Postgres setup notes
+## 3) (Optional) Proxy through your main site
+
+If you want `/api/admin` to live on your main domain, add a rewrite in your site's `vercel.json`:
+
+```json
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://YOUR-DOSSIER-DOMAIN/api/:path*"
+    }
+  ]
+}
+```
+
+Then set `VITE_TRACKER_ENDPOINT=/api/collect` in your client app.
+
+## 4) Postgres setup notes
 
 - Vercel Postgres works out of the box.
-- `ensureSchema()` runs on ingest and admin access; it is idempotent.
-
-## 4) CORS / allowlist
-
-Dossier only accepts cross‑origin requests from `REPORT_ALLOWED_HOSTS` or the current deployment host. Add your client app’s domain(s) to `REPORT_ALLOWED_HOSTS`.
+- `ensureSchema()` runs on ingest and admin access and is idempotent.
