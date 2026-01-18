@@ -2,7 +2,7 @@
 
 Dossier ships as plain TypeScript utilities you can copy into any Vite/SPA or framework project.
 
-## Recommended (plug-and-play)
+## Plug-and-play
 
 ```ts
 import { initDossier } from './tracking';

@@ -1,5 +1,7 @@
 # Quickstart
 
+This guide assumes the standard setup: **one Dossier deployment per website**.
+
 ## 1) Deploy Dossier
 
 Deploy this repo to Vercel (no framework required).

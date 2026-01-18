@@ -4,7 +4,12 @@
 
 Ingest endpoint for client telemetry. Accepts a JSON payload of events, session ids, and summary data.
 
-CORS: requests are accepted if the `Origin` or `Referer` host is in `REPORT_ALLOWED_HOSTS`, or matches the current deployment host.
+CORS rules:
+
+- same-origin requests are allowed
+- cross-origin requests are allowed only if the `Origin` or `Referer` host is in `REPORT_ALLOWED_HOSTS`
+
+If you proxy through your site with a rewrite, requests are same-origin and no allowlist is required.
 
 ## GET /api/admin/status
 

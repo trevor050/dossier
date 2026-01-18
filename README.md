@@ -1,21 +1,29 @@
 # Dossier
 
-Personal-scale, first-party analytics for low-traffic sites. Built for the "send to a few recruiters and see what they opened" workflow.
+Personal-scale, first-party analytics for low-traffic sites.
 
-## Who it's for
-
-- Portfolio or resume sites shared with a short list of people
-- Small teams who want full visibility without a heavy analytics stack
-- Founders who want simple, private tracking without third-party scripts
+Dossier is built for the "send to a few recruiters and see what they opened" use case. The standard setup is **one Dossier deployment per website** so data, admin tokens, and retention settings stay isolated.
 
 ## What you get
 
 - First-party event capture (hover, click, scroll, sections + device context)
-- Session timing (active/idle/total)
+- Session timing (active / idle / total)
 - Token-protected admin dashboard at `/api/admin`
 - Postgres storage with idempotent migrations
 - IP enrichment (IPinfo + PTR) with caching and bot filtering
 - Vercel Functions ready (no extra backend needed)
+
+## Standard setup (recommended)
+
+**One Dossier per website**.
+
+This is the most common open-source pattern and the easiest to understand:
+
+- each site has its own Dossier deployment
+- each site has its own Postgres database
+- each site has its own `ADMIN_TOKEN`
+
+If you run multiple websites, deploy multiple Dossier instances.
 
 ## 5-minute setup
 
@@ -36,13 +44,13 @@ Optional:
 - `REPORT_ALLOWED_HOSTS` (comma-separated allowlist)
 - `BOT_SCORE_THRESHOLD` (default `6`)
 
-### 3) Choose your integration style
+### 3) Integrate with your site
+
+Choose the routing style you want.
 
 #### Option A: Same-origin proxy (recommended)
 
-If you want `/api/admin` and `/api/collect` to live on your existing site without replatforming:
-
-1) Add a rewrite in your site's `vercel.json`:
+Keep `/api/admin` and `/api/collect` on your site domain by adding a rewrite:
 
 ```json
 {
@@ -55,19 +63,21 @@ If you want `/api/admin` and `/api/collect` to live on your existing site withou
 }
 ```
 
-2) Set `VITE_TRACKER_ENDPOINT=/api/collect` in your site.
+Then set:
 
-This keeps everything on your main domain and avoids CORS headaches.
+```
+VITE_TRACKER_ENDPOINT=/api/collect
+```
 
 #### Option B: Direct cross-origin
 
-If you do not want rewrites, point the client directly at Dossier:
+Point your client directly at Dossier:
 
 ```
 VITE_TRACKER_ENDPOINT=https://YOUR-DOSSIER-DOMAIN/api/collect
 ```
 
-Then add your site domain(s) to `REPORT_ALLOWED_HOSTS` in Dossier.
+Add your site domain(s) to `REPORT_ALLOWED_HOSTS`.
 
 ## Plug-and-play client
 
@@ -79,18 +89,7 @@ import { initDossier } from './tracking';
 initDossier();
 ```
 
-Advanced usage:
-
-```ts
-import { initDossier } from './tracking';
-
-initDossier({
-  shouldIgnore: () => false,
-  installGlobalTracking: true,
-});
-```
-
-To disable tracking entirely in a specific environment:
+To disable tracking in an environment:
 
 ```
 VITE_TRACKER_ENDPOINT=off
@@ -127,6 +126,7 @@ VITE_TRACKER_ENDPOINT=off
 - `docs/api.md`
 - `docs/schema.md`
 - `docs/security.md`
+- `docs/troubleshooting.md`
 
 ## Local dev
 

@@ -1,5 +1,7 @@
 # Deploy to Vercel
 
+This guide assumes the standard setup: **one Dossier deployment per website**.
+
 ## 1) Create a new Vercel project
 
 - Import this repo
