@@ -38,6 +38,8 @@ export default function handler(_req: any, res: any) {
       .hd{display:flex;gap:12px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border);background:rgba(0,0,0,.18)}
       .bd{padding:14px 16px}
       .detailsCard .bd{overflow-x:auto}
+      #list{overflow-x:auto}
+      #list table{min-width:760px}
       .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
       .btn{border:1px solid var(--border);background:rgba(0,0,0,.2);color:var(--text);padding:8px 10px;border-radius:10px;cursor:pointer}
       .btn.icon{padding:8px 14px;min-width:54px;font-size:15px}

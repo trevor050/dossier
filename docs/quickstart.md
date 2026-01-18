@@ -70,3 +70,13 @@ initDossier();
 ## 5) Open the dashboard
 
 Visit `/api/admin` and enter your `ADMIN_TOKEN`.
+
+## Drop-in install (existing project)
+
+If you want Dossier embedded inside an existing app, run:
+
+```bash
+npx degit trevor050/dossier .dossier
+node .dossier/scripts/install.mjs --target . --write-package --update-tsconfig
+rm -rf .dossier
+```

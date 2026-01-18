@@ -84,6 +84,18 @@ VITE_TRACKER_ENDPOINT=https://YOUR-DOSSIER-DOMAIN/api/collect
 
 Add your site domain(s) to `REPORT_ALLOWED_HOSTS`.
 
+## Drop-in install (existing project)
+
+If you want Dossier embedded inside an existing app, use the install script:
+
+```bash
+npx degit trevor050/dossier .dossier
+node .dossier/scripts/install.mjs --target . --write-package --update-tsconfig
+rm -rf .dossier
+```
+
+Then set env vars and run `npm install`.
+
 ## Plug-and-play client
 
 Copy `src/tracking/*` into your app and call `initDossier()`.
@@ -129,6 +141,7 @@ VITE_TRACKER_ENDPOINT=off
 - `docs/deploy-vercel.md`
 - `docs/client.md`
 - `docs/api.md`
+- `docs/events.md`
 - `docs/schema.md`
 - `docs/security.md`
 - `docs/troubleshooting.md`
