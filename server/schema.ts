@@ -104,6 +104,24 @@ export function ensureSchema(): Promise<void> {
       `);
 
       await query(`
+        CREATE TABLE IF NOT EXISTS identity_edges (
+          a TEXT NOT NULL,
+          b TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          weight DOUBLE PRECISION NOT NULL CHECK (weight >= 0 AND weight <= 1),
+          decay_lambda DOUBLE PRECISION NOT NULL CHECK (decay_lambda >= 0),
+          first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          hits INTEGER NOT NULL DEFAULT 1,
+          PRIMARY KEY (a, b, kind)
+        );
+      `);
+
+      await query(`CREATE INDEX IF NOT EXISTS idx_identity_edges_a ON identity_edges(a);`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_identity_edges_b ON identity_edges(b);`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_identity_edges_last_seen ON identity_edges(last_seen_at DESC);`);
+
+      await query(`
         CREATE TABLE IF NOT EXISTS replay_events (
           id BIGSERIAL PRIMARY KEY,
           sid TEXT NOT NULL REFERENCES sessions(sid) ON DELETE CASCADE,

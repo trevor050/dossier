@@ -14,6 +14,7 @@ import { fetchAndCacheIpinfo, getIpinfoCached } from '../server/ipinfo.js';
 import { fetchAndCachePtr, getPtrCached } from '../server/ptr.js';
 import { makeDisplayName } from '../server/names.js';
 import { getSettings } from '../server/settings.js';
+import { buildIdentityEdges, upsertIdentityEdge } from '../server/identity.js';
 
 type IncomingEvent = {
   type: string;
@@ -169,6 +170,22 @@ export default async function handler(req: any, res: any) {
 
     await ensureSchema();
 
+    // Extra bot signal: request velocity (per IP). Helps catch scrapers that spoof UA.
+    let velocityIsBot = false;
+    if (ip) {
+      const recent = await query<{ n: string }>(
+        `
+          SELECT COUNT(*)::text AS n
+          FROM sessions
+          WHERE ip = $1 AND started_at > NOW() - INTERVAL '60 seconds'
+        `,
+        [ip],
+      ).catch(() => null);
+      const n = recent?.rows?.[0]?.n ? Number(recent.rows[0].n) : 0;
+      if (Number.isFinite(n) && n >= 25) velocityIsBot = true;
+    }
+    const isBot = bot.isBot || velocityIsBot;
+
     await query(
       `
         INSERT INTO visitors (
@@ -243,7 +260,7 @@ export default async function handler(req: any, res: any) {
         JSON.stringify(geo),
         bot.score,
         bot.reasons.join(', '),
-        bot.isBot,
+        isBot,
       ]
     );
 
@@ -258,6 +275,20 @@ export default async function handler(req: any, res: any) {
         `,
         [sid, ip]
       );
+    }
+
+    // Identity graph (exclude bots to avoid pollution)
+    if (!isBot) {
+      const edges = buildIdentityEdges({
+        vid,
+        scid: scid ?? null,
+        fpid: fpid ?? null,
+        ip: ip ?? null,
+        userAgent,
+      });
+      for (const edge of edges) {
+        await upsertIdentityEdge(edge).catch(() => {});
+      }
     }
 
     if (events.length) {

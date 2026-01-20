@@ -36,29 +36,39 @@ This means IP can connect sessions even if the client is in private browsing (be
 
 ## How linking works today (current behavior)
 
-### 1) “Linked visitors” in the dashboard
+### 1) Identity graph (probabilistic)
 
-In `api/admin/visitor.ts`, Dossier considers two visitors “related” if **any** session overlaps on:
+Dossier writes weighted edges into `identity_edges` on ingest (non-bot only) and resolves identity by walking the graph with a confidence threshold.
 
-- `session_cookie_id` (cookie)
-- `fingerprint_id` (FingerprintJS)
-- `ip` (session IP / IP history)
+Signals are modeled as **nodes** like:
 
-This is why VPN/NAT can create *surprisingly correct* links: if the VPN egress IP is reused across your own test sessions, you’ll get `shared_ip=true`.
+- `vid:<vid>`
+- `scid:<cookie-id>`
+- `fp:<fingerprint-id>`
+- `ipua:<ip>|<uaHash>` (IP is never used alone)
 
-### 2) Cluster ID generation
+Edges have:
 
-When you view a visitor, Dossier computes a deterministic cluster id:
+- `weight` (0..1) — base strength of that signal relationship
+- `decay_lambda` — time-decay rate (older evidence becomes less meaningful)
 
-- Collect all known tokens for that visitor:
-  - `scid:<session_cookie_id>`
-  - `ip:<ip>`
-  - `fp:<fingerprint_id>`
-- Sort tokens and hash them (`sha1`) to produce a `group_id`
+At query time, each edge uses an *effective weight*:
 
-This cluster id is stored in `visitor_groups` with a friendly name so you can label it.
+`effective = weight * exp(-decay_lambda * age_seconds)`
 
-## Why VPN + incognito can still link (and why that’s not “fingerprinting”)
+### 2) Evidence combination
+
+When multiple independent signals connect two visitors, Dossier combines evidence using a “noisy-or” model:
+
+`conf' = 1 - (1-conf) * (1-effective)`
+
+This increases confidence as more evidence accumulates.
+
+### 3) “Linked visitors” in the dashboard
+
+The dashboard shows the top related visitors above the configured confidence threshold, plus which signal types contributed (cookie / fingerprint / ip+ua).
+
+## Why VPN + incognito can still link
 
 If a VPN provider assigns you an exit IP that you also used in other sessions (or Dossier test sessions), the system links by **shared IP**.
 
@@ -78,6 +88,11 @@ If you want fewer false links:
 - Prefer links that include **fingerprint_id** and/or **cookie id**.
 - Add time windows to IP matches (e.g. “same IP within 24h”) to reduce stale linking.
 
+Current Dossier defaults reflect this:
+
+- IP is never a standalone signal node; it is only used as `ip+ua` and decays quickly.
+- Bot sessions are excluded from the identity graph.
+
 ## Privacy + ethics
 
 Dossier is **first-party** (your domain, your database). Still, identity linking can be sensitive.
@@ -88,4 +103,3 @@ Recommendations:
 - Set retention (and document it).
 - Add clear disclosure if you use fingerprinting / replay.
 - Avoid linking across *different sites* by default.
-

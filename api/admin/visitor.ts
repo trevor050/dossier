@@ -3,7 +3,7 @@ import { ensureSchema } from '../../server/schema.js';
 import { query, getPool } from '../../server/db.js';
 import { makeDisplayName } from '../../server/names.js';
 import { readRawBody, safeHostFromUrl } from '../../server/http.js';
-import { createHash } from 'node:crypto';
+import { GraphService } from '../../server/identity.js';
 
 function clampString(value: unknown, max = 200): string | null {
   if (typeof value !== 'string') return null;
@@ -242,53 +242,41 @@ export default async function handler(req: any, res: any) {
   );
   const ips = ipRes.rows.map((r: any) => r.ip).filter(Boolean);
 
-  const tokens = [
-    ...scids.map((s: string) => `scid:${s}`),
-    ...ips.map((i: string) => `ip:${i}`),
-    ...fpids.map((f: string) => `fp:${f}`),
-  ];
-  const rawKey = tokens.length ? tokens.sort().join('|') : `vid:${vid}`;
-  const groupId = createHash('sha1').update(rawKey).digest('hex').slice(0, 12);
+  const relatedGraph = await GraphService.resolveRelatedVisitors({
+    vid,
+    confidenceThreshold: 0.85,
+    maxDepth: 5,
+    limit: 60,
+    minEdgeWeight: 0.15,
+  }).catch(() => []);
 
+  // Legacy: keep `cluster` shape for the admin UI, but it no longer drives identity.
+  // The old deterministic `visitor_groups` hash is deprecated in favor of the identity graph.
+  const groupId = `graph:${vid}`;
   const groupRes = await query<any>(`SELECT display_name FROM visitor_groups WHERE group_id = $1 LIMIT 1`, [groupId]);
   let groupName = groupRes.rows[0]?.display_name ?? null;
-  if (!groupName) {
-    groupName = makeDisplayName(groupId);
-    await query(
-      `
-        INSERT INTO visitor_groups (group_id, display_name, updated_at)
-        VALUES ($1, $2, NOW())
-        ON CONFLICT (group_id) DO NOTHING
-      `,
-      [groupId, groupName]
-    );
-  }
+  if (!groupName) groupName = makeDisplayName(groupId);
 
-  const relatedRes = await query<any>(
-    `
-      SELECT
-        s.vid,
-        v.display_name,
-        v.last_seen_at,
-        v.last_ip,
-        v.ptr,
-        v.ipinfo,
-        BOOL_OR(s.session_cookie_id = ANY($2::text[])) AS shared_cookie,
-        BOOL_OR(s.ip = ANY($3::text[])) AS shared_ip,
-        BOOL_OR(s.fingerprint_id = ANY($4::text[])) AS shared_fingerprint
-      FROM sessions s
-      JOIN visitors v ON v.vid = s.vid
-      WHERE s.vid <> $1
-        AND (s.session_cookie_id = ANY($2::text[]) OR s.ip = ANY($3::text[]) OR s.fingerprint_id = ANY($4::text[]))
-      GROUP BY s.vid, v.display_name, v.last_seen_at, v.last_ip, v.ptr, v.ipinfo
-      ORDER BY v.last_seen_at DESC
-      LIMIT 60
-    `,
-    [vid, scids, ips, fpids]
-  );
+  const relatedRes = relatedGraph.length
+    ? await query<any>(
+        `
+          SELECT
+            v.vid,
+            v.display_name,
+            v.last_seen_at,
+            v.last_ip,
+            v.ptr,
+            v.ipinfo
+          FROM visitors v
+          WHERE v.vid = ANY($1::text[])
+        `,
+        [relatedGraph.map((r) => r.vid)],
+      )
+    : { rows: [] as any[] };
 
   const related = relatedRes.rows.map((r: any) => {
     const ipinfoR = r.ipinfo ?? {};
+    const g = relatedGraph.find((x) => x.vid === r.vid);
     return {
       vid: r.vid,
       display_name: r.display_name ?? makeDisplayName(r.vid),
@@ -299,9 +287,10 @@ export default async function handler(req: any, res: any) {
       region: ipinfoR.region ?? null,
       country: ipinfoR.country ?? null,
       org: ipinfoR.org ?? ipinfoR.company?.name ?? null,
-      shared_cookie: Boolean(r.shared_cookie),
-      shared_ip: Boolean(r.shared_ip),
-      shared_fingerprint: Boolean(r.shared_fingerprint),
+      shared_cookie: Boolean(g?.shared_cookie),
+      shared_ip: Boolean(g?.shared_ip),
+      shared_fingerprint: Boolean(g?.shared_fingerprint),
+      confidence: g ? g.confidence : 0,
     };
   });
 

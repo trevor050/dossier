@@ -915,6 +915,8 @@ export default function handler(_req: any, res: any) {
           if(r.shared_cookie) why.push('cookie');
           if(r.shared_ip) why.push('ip');
           if(r.shared_fingerprint) why.push('fingerprint');
+          const conf = (typeof r.confidence === 'number' && isFinite(r.confidence)) ? r.confidence : null;
+          if(conf!=null) why.unshift(Math.round(conf*100)/100);
           return '<tr data-vid=\"'+r.vid+'\">'+
             '<td class=\"mono\">'+(r.display_name||r.vid.slice(0,8))+'</td>'+
             '<td>'+fmtDate(r.last_seen_at)+'</td>'+
