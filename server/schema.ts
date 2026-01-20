@@ -103,9 +103,21 @@ export function ensureSchema(): Promise<void> {
         );
       `);
 
+      await query(`
+        CREATE TABLE IF NOT EXISTS replay_events (
+          id BIGSERIAL PRIMARY KEY,
+          sid TEXT NOT NULL REFERENCES sessions(sid) ON DELETE CASCADE,
+          vid TEXT NOT NULL REFERENCES visitors(vid) ON DELETE CASCADE,
+          ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          chunk_seq INTEGER,
+          events JSONB NOT NULL
+        );
+      `);
+
       await query(`CREATE INDEX IF NOT EXISTS idx_session_ips_sid ON session_ips(sid);`);
       await query(`CREATE INDEX IF NOT EXISTS idx_sessions_cookie ON sessions(session_cookie_id);`);
       await query(`CREATE INDEX IF NOT EXISTS idx_sessions_fpid ON sessions(fingerprint_id);`);
+      await query(`CREATE INDEX IF NOT EXISTS idx_replay_events_sid_id ON replay_events(sid, id);`);
 
       await query(`
         CREATE TABLE IF NOT EXISTS visitor_groups (

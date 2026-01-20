@@ -4,6 +4,10 @@
 
 Ingest endpoint for client telemetry. Accepts a JSON payload of events, session ids, and summary data.
 
+## POST /api/replay (optional)
+
+Ingest endpoint for session replay chunks (rrweb events). Stores events in `replay_events`.
+
 CORS rules:
 
 - same-origin requests are allowed
@@ -26,6 +30,10 @@ List sessions (supports `?bots=1`).
 ## GET /api/admin/session
 
 Single session details.
+
+## GET /api/admin/replay
+
+Fetch replay events for a session (used by the dashboard replay player).
 
 ## GET /api/admin/visitors
 

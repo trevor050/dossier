@@ -1,122 +1,106 @@
 # Dossier
 
-Personal-scale, first-party analytics for low-traffic sites.
+Personal-scale, first-party analytics (plus optional session replay) for low-traffic sites.
 
-Dossier is built for the "send to a few recruiters and see what they opened" use case. The standard setup is **one Dossier deployment per website** so data, admin tokens, and retention settings stay isolated.
+Dossier is built for the "send to a few recruiters and see what they opened" use case.
 
 ## What you get
 
 - First-party event capture (hover, click, scroll, sections + device context)
 - Session timing (active / idle / total)
+- Optional session replay (rrweb)
 - Token-protected admin dashboard at `/api/admin`
 - Postgres storage with idempotent migrations
 - IP enrichment (IPinfo + PTR) with caching and bot filtering
-- Vercel Functions ready (no extra backend needed)
+- Vercel Functions ready (no extra backend)
 
-## Standard setup (recommended)
+## Install (recommended): single Vercel project
 
-**One Dossier per website**.
+Install Dossier as a package, and keep `/api/*` routes in the same repo as your site/app (no separate Vercel project).
 
-This is the most common open-source pattern and the easiest to understand:
-
-- each site has its own Dossier deployment
-- each site has its own Postgres database
-- each site has its own `ADMIN_TOKEN`
-
-If you run multiple websites, deploy multiple Dossier instances.
-
-To create a new instance quickly:
-
-- GitHub: click "Use this template" on the repo
-- CLI: `npx degit trevor050/dossier my-dossier`
-
-## 5-minute setup
-
-### 1) Deploy Dossier
-
-Deploy this repo to Vercel.
-
-### 2) Set env vars
-
-Required:
-
-- `DATABASE_URL` (or `POSTGRES_URL*`)
-- `ADMIN_TOKEN`
-
-Optional:
-
-- `IPINFO_TOKEN`
-- `REPORT_ALLOWED_HOSTS` (comma-separated allowlist)
-- `BOT_SCORE_THRESHOLD` (default `6`)
-
-### 3) Integrate with your site
-
-Choose the routing style you want.
-
-#### Option A: Same-origin proxy (recommended)
-
-Keep `/api/admin` and `/api/collect` on your site domain by adding a rewrite:
-
-```json
-{
-  "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "https://YOUR-DOSSIER-DOMAIN/api/:path*"
-    }
-  ]
-}
-```
-
-Then set:
-
-```
-VITE_TRACKER_ENDPOINT=/api/collect
-```
-
-#### Option B: Direct cross-origin
-
-Point your client directly at Dossier:
-
-```
-VITE_TRACKER_ENDPOINT=https://YOUR-DOSSIER-DOMAIN/api/collect
-```
-
-Add your site domain(s) to `REPORT_ALLOWED_HOSTS`.
-
-## Drop-in install (existing project)
-
-If you want Dossier embedded inside an existing app, use the install script:
+### 1) Install
 
 ```bash
-npx degit trevor050/dossier .dossier
-node .dossier/scripts/install.mjs --target . --write-package --update-tsconfig
-rm -rf .dossier
+npm install @trevor050/dossier
 ```
 
-Then set env vars and run `npm install`.
+Until the npm package is published, you can install from GitHub:
 
-## Plug-and-play client
+```bash
+npm install github:trevor050/dossier
+```
 
-Copy `src/tracking/*` into your app and call `initDossier()`.
+### 2) Add API shims (Vercel `api/` routes)
+
+Create these files in your project:
 
 ```ts
-import { initDossier } from './tracking';
-
-initDossier();
+// api/collect.ts
+export { default } from '@trevor050/dossier/api/collect';
 ```
 
-To disable tracking in an environment:
-
+```ts
+// api/replay.ts (optional)
+export { default } from '@trevor050/dossier/api/replay';
 ```
-VITE_TRACKER_ENDPOINT=off
+
+```ts
+// api/admin/index.ts
+export { default } from '@trevor050/dossier/api/admin/index';
 ```
 
-## Admin dashboard
+Copy the rest of the admin endpoints from `api/admin/*` in this repo (they are all 1-line re-exports).
 
-- Visit `/api/admin`
-- Enter `ADMIN_TOKEN`
-- Token is stored in `localStorage` + a cookie scoped to `/api/admin`
+### 3) Configure env vars
+
+Server (required):
+
+```bash
+DATABASE_URL=postgres://...
+ADMIN_TOKEN=long-random-secret
+```
+
+Server (optional):
+
+```bash
+IPINFO_TOKEN=
+REPORT_ALLOWED_HOSTS=
+BOT_SCORE_THRESHOLD=6
+```
+
+Client (Vite):
+
+```bash
+VITE_TRACKER_ENDPOINT=/api/collect
+VITE_TRACKER_PERSIST=localStorage
+```
+
+### 4) Add the client snippet
+
+```ts
+import { initDossier } from '@trevor050/dossier/client';
+
+initDossier({
+  endpoint: '/api/collect',
+  replay: { sampleRate: 0.1 }, // optional (0 disables)
+});
+```
+
+### 5) Open the dashboard
+
+Visit `/api/admin` and enter `ADMIN_TOKEN`.
+
+## Alternative: standalone Dossier deployment
+
+If you want Dossier deployed separately, deploy this repo to Vercel and proxy it from your site via rewrites.
+
+See `docs/quickstart.md`.
+
+## Docs
+
+- `docs/quickstart.md`
+- `docs/client.md`
+- `docs/api.md`
 
 ## Project layout
 

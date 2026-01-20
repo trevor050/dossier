@@ -37,9 +37,10 @@ export default function handler(_req: any, res: any) {
       .detailsCard{position:sticky;top:16px}
       .hd{display:flex;gap:12px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--border);background:rgba(0,0,0,.18)}
       .bd{padding:14px 16px}
-      .detailsCard .bd{overflow-x:auto}
-      #list{overflow-x:auto}
+      .detailsCard .bd{overflow-x:auto;-webkit-overflow-scrolling:touch}
+      #list{overflow-x:auto;-webkit-overflow-scrolling:touch}
       #list table{min-width:760px}
+      #details table{min-width:760px}
       .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
       .btn{border:1px solid var(--border);background:rgba(0,0,0,.2);color:var(--text);padding:8px 10px;border-radius:10px;cursor:pointer}
       .btn.icon{padding:8px 14px;min-width:54px;font-size:15px}
@@ -74,6 +75,8 @@ export default function handler(_req: any, res: any) {
 	      .evt .d{font-size:12px;color:var(--muted);margin-top:2px}
 	      #map{height:450px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.18)}
 	      .leaflet-container{background:rgba(0,0,0,.18)}
+        #replay{height:520px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.18)}
+        .rr-player{width:100%;height:100%}
 	    </style>
 	  </head>
   <body>
@@ -129,6 +132,7 @@ export default function handler(_req: any, res: any) {
 	            <div class="hd">
 	              <div class="controls" style="width:100%">
 	                <div class="row" style="flex:1">Details</div>
+                  <button class="btn" id="btnReplay" style="display:none">Replay</button>
 	                <label class="tag" id="rawWrap" style="display:none"><input id="rawToggle" type="checkbox" /> raw</label>
 	              </div>
 	            </div>
@@ -149,6 +153,7 @@ export default function handler(_req: any, res: any) {
           mapShowBots:false,
           search:'',
           raw:false,
+          replayOpen:false,
           selectedSid:null,
           expandedSid:null,
           selectedVid:null,
@@ -158,7 +163,7 @@ export default function handler(_req: any, res: any) {
           settings:null,
           theme:'midnight',
           sessionsPage:1,
-          cache:{ sessionLite:{}, sessionFull:{}, visitor:{} },
+          cache:{ sessionLite:{}, sessionFull:{}, visitor:{}, replay:{} },
           lastUpdatedAt:null,
         };
 
@@ -821,7 +826,10 @@ export default function handler(_req: any, res: any) {
         state.selectedVid=vid;
         state.selectedSid=null;
         state.expandedSid=null;
+        state.replayOpen=false;
         $('rawWrap').style.display='none';
+        const btnReplay=$('btnReplay');
+        if(btnReplay) btnReplay.style.display='none';
         $('details').innerHTML='<div class=\"row\">Loading visitor…</div>';
         const data=await api('/api/admin/visitor?vid='+encodeURIComponent(vid));
         const v=data.visitor;
@@ -1051,6 +1059,82 @@ export default function handler(_req: any, res: any) {
         return data;
       }
 
+      function loadCssOnce(href){
+        try{
+          if(document.querySelector('link[data-href=\"'+href.replace(/\"/g,'')+'\"]')) return;
+          const link=document.createElement('link');
+          link.rel='stylesheet';
+          link.href=href;
+          link.setAttribute('data-href', href);
+          document.head.appendChild(link);
+        }catch{
+          // ignore
+        }
+      }
+
+      function loadScriptOnce(src){
+        return new Promise((resolve,reject)=>{
+          try{
+            const existing=document.querySelector('script[data-src=\"'+src.replace(/\"/g,'')+'\"]');
+            if(existing){ resolve(); return; }
+            const s=document.createElement('script');
+            s.src=src;
+            s.async=true;
+            s.defer=true;
+            s.setAttribute('data-src', src);
+            s.onload=()=>resolve();
+            s.onerror=()=>reject(new Error('failed to load '+src));
+            document.head.appendChild(s);
+          }catch(e){
+            reject(e);
+          }
+        });
+      }
+
+      let replayAssetsPromise=null;
+      function ensureReplayAssets(){
+        if(replayAssetsPromise) return replayAssetsPromise;
+        replayAssetsPromise=(async ()=>{
+          loadCssOnce('https://unpkg.com/rrweb-player@latest/dist/style.css');
+          await loadScriptOnce('https://unpkg.com/rrweb@latest/dist/rrweb.min.js');
+          await loadScriptOnce('https://unpkg.com/rrweb-player@latest/dist/index.js');
+        })();
+        return replayAssetsPromise;
+      }
+
+      async function fetchReplay(sid){
+        const cached=state.cache.replay[sid];
+        if(cached && cached.events) return cached;
+        const data=await api('/api/admin/replay?sid='+encodeURIComponent(sid)+'&limit=200');
+        const evts = Array.isArray(data && data.events) ? data.events : [];
+        state.cache.replay[sid]={ events: evts, last_id: (data && data.last_id) ? data.last_id : null };
+        return state.cache.replay[sid];
+      }
+
+      async function renderReplayPlayer(sid){
+        const host=$('replay');
+        if(!host) return;
+        host.innerHTML='<div class=\"row\">Loading replay…</div>';
+        try{
+          await ensureReplayAssets();
+          const data=await fetchReplay(sid);
+          const events = Array.isArray(data && data.events) ? data.events : [];
+          if(!events.length){
+            host.innerHTML='<div class=\"row\">No replay recorded for this session.</div>';
+            return;
+          }
+          const Player = window.rrwebPlayer;
+          if(typeof Player !== 'function'){
+            host.innerHTML='<div class=\"row\">Replay player failed to load.</div>';
+            return;
+          }
+          host.innerHTML='';
+          new Player({ target: host, props: { events, autoPlay: false } });
+        }catch{
+          host.innerHTML='<div class=\"row\">Failed to load replay.</div>';
+        }
+      }
+
       async function loadSessionLite(sid){
         try{
           await fetchSession(sid, true);
@@ -1061,9 +1145,14 @@ export default function handler(_req: any, res: any) {
       }
 
       async function loadSession(sid){
+        const prevSid = state.selectedSid;
         state.selectedSid=sid;
+        if(prevSid !== sid) state.replayOpen=false;
+        state.selectedVid=null;
         const rawWrap=$('rawWrap');
         if(rawWrap) rawWrap.style.display = (state.view==='sessions' || state.view==='bots') ? '' : 'none';
+        const btnReplay=$('btnReplay');
+        if(btnReplay) btnReplay.style.display = '';
         const data=await fetchSession(sid, false);
         const s=data.session;
         const events=data.events||[];
@@ -1190,7 +1279,11 @@ export default function handler(_req: any, res: any) {
 	        const ipHtml = ipHistory
 	          ? '<div style=\"margin-top:12px\"><div class=\"row\" style=\"margin-bottom:8px\">IP changes</div><table><thead><tr><th>IP</th><th>First seen</th><th>Last seen</th><th>Hits</th></tr></thead><tbody>'+ipHistory+'</tbody></table></div>'
 	          : '';
-	        $('details').innerHTML=header+breakdownHtml+ipHtml+'<div style=\"margin-top:12px\">'+(state.raw?('<div class=\"pre\">'+(raw||'(none)')+'</div>'):('<div class=\"timeline\">'+(timeline||'<div class=\"row\">No events yet.</div>')+'</div>'))+'</div>';
+          const replayHtml = state.replayOpen
+            ? '<div style=\"margin-top:12px\"><div class=\"row\" style=\"margin-bottom:8px\">Replay</div><div id=\"replay\"></div></div>'
+            : '';
+	        $('details').innerHTML=header+breakdownHtml+ipHtml+replayHtml+'<div style=\"margin-top:12px\">'+(state.raw?('<div class=\"pre\">'+(raw||'(none)')+'</div>'):('<div class=\"timeline\">'+(timeline||'<div class=\"row\">No events yet.</div>')+'</div>'))+'</div>';
+          if(state.replayOpen) void renderReplayPlayer(sid);
 	      }
 
 	      function setView(view){
@@ -1222,6 +1315,8 @@ export default function handler(_req: any, res: any) {
         if(mapBotsWrap) mapBotsWrap.style.display = view==='map' ? '' : 'none';
 	        const rawWrap=$('rawWrap');
 	        if(rawWrap) rawWrap.style.display = (state.selectedSid && (view==='sessions' || view==='bots')) ? '' : 'none';
+          const btnReplay=$('btnReplay');
+          if(btnReplay) btnReplay.style.display = state.selectedSid ? '' : 'none';
 
 	        render();
 	      }
@@ -1283,6 +1378,11 @@ export default function handler(_req: any, res: any) {
         }
 	      $('refresh').addEventListener('click', async ()=>{ await refreshCurrent(); });
 	      $('rawToggle').addEventListener('change', async (e)=>{ state.raw=e.target.checked; if(state.selectedSid) await loadSession(state.selectedSid); });
+	      $('btnReplay').addEventListener('click', async ()=>{
+	        if(!state.selectedSid) return;
+	        state.replayOpen = !state.replayOpen;
+	        await loadSession(state.selectedSid);
+	      });
 
         // Auto-refresh keeps the dashboard usable without a manual reload button.
         let refreshTimer=null;

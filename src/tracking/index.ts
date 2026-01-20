@@ -7,6 +7,8 @@ export type InitDossierOptions = {
   shouldIgnore?: () => boolean;
   installGlobalTracking?: boolean;
   installPagehideFlush?: boolean;
+  fingerprinting?: boolean;
+  replay?: boolean | { sampleRate?: number; maskAllInputs?: boolean };
 };
 
 export function initDossier(options: InitDossierOptions = {}) {
@@ -23,6 +25,11 @@ export function initDossier(options: InitDossierOptions = {}) {
     endpoint,
     persistVisitorId: options.persistVisitorId ?? config.persist,
     shouldIgnore: options.shouldIgnore,
+    fingerprinting: options.fingerprinting ?? true,
+    replaySampleRate:
+      options.replay === true ? 1 : typeof options.replay === 'object' && options.replay ? options.replay.sampleRate ?? 1 : 0,
+    replayMaskAllInputs:
+      options.replay === true ? true : typeof options.replay === 'object' && options.replay ? options.replay.maskAllInputs ?? true : true,
   });
 
   if (options.installGlobalTracking !== false) {
@@ -32,6 +39,7 @@ export function initDossier(options: InitDossierOptions = {}) {
 
   const onPagehide = () => {
     void telemetry.flush({ useBeacon: true });
+    void telemetry.flushReplay({ useBeacon: true });
   };
 
   const shouldInstallPagehide = options.installPagehideFlush !== false;

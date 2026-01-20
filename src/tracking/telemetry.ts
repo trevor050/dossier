@@ -12,6 +12,10 @@ export type TelemetrySummary = {
 
 type TelemetryClientOptions = {
   endpoint?: string;
+  replayEndpoint?: string;
+  replaySampleRate?: number; // 0 disables
+  replayMaskAllInputs?: boolean;
+  fingerprinting?: boolean;
   persistVisitorId?: 'localStorage' | 'cookie';
   shouldIgnore?: () => boolean;
   isMobile?: () => boolean;
@@ -129,6 +133,10 @@ function getTrackingIds(persistVisitorId: 'localStorage' | 'cookie'): { vid: str
 
 export function createTelemetryClient(options: TelemetryClientOptions = {}) {
   const endpoint = options.endpoint ?? '/api/collect';
+  const replayEndpoint = options.replayEndpoint ?? '/api/replay';
+  const replaySampleRate = options.replaySampleRate ?? 0;
+  const replayMaskAllInputs = options.replayMaskAllInputs ?? true;
+  const fingerprinting = options.fingerprinting ?? true;
   const persistVisitorId = options.persistVisitorId ?? 'localStorage';
   const shouldIgnore = options.shouldIgnore ?? (() => false);
   const isMobile = options.isMobile ?? (() => window.matchMedia('(max-width: 900px)').matches);
@@ -140,6 +148,13 @@ export function createTelemetryClient(options: TelemetryClientOptions = {}) {
   let seq = 0;
   const queue: TelemetryEvent[] = [];
   let flushTimer: number | null = null;
+
+  let replayEnabled = replaySampleRate > 0 && Math.random() < replaySampleRate;
+  let replayStarted = false;
+  let replayChunkSeq = 0;
+  const replayQueue: any[] = [];
+  let replayFlushTimer: number | null = null;
+  let replayStop: (() => void) | null = null;
 
   const sessionStartMs = performance.now();
   let firstActivityAtMs: number | null = null;
@@ -263,12 +278,102 @@ export function createTelemetryClient(options: TelemetryClientOptions = {}) {
     );
   }
 
+  function scheduleReplayFlush() {
+    if (replayFlushTimer != null) return;
+    replayFlushTimer = window.setTimeout(() => {
+      replayFlushTimer = null;
+      void flushReplay();
+    }, 2000);
+  }
+
+  function flushReplay(opts: { useBeacon?: boolean } = {}) {
+    if (shouldIgnore()) return Promise.resolve();
+    if (!replayEnabled) return Promise.resolve();
+    if (!replayQueue.length) return Promise.resolve();
+
+    const { vid, sid } = getTrackingIds(persistVisitorId);
+    const scid = getSessionCookieId();
+    const refTag = getRefTag(persistVisitorId);
+    const fpid = getCachedFingerprintId();
+
+    const payload = {
+      vid,
+      sid,
+      scid,
+      ref_tag: refTag ?? undefined,
+      fpid: fpid ?? undefined,
+      page: getPage(),
+      chunk_seq: replayChunkSeq++,
+      events: replayQueue.splice(0, replayQueue.length),
+    };
+
+    const body = JSON.stringify(payload);
+
+    if (opts.useBeacon) {
+      try {
+        if ('sendBeacon' in navigator) {
+          navigator.sendBeacon(replayEndpoint, body);
+          return Promise.resolve();
+        }
+      } catch {
+        // fall back to fetch
+      }
+    }
+
+    return fetch(replayEndpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+      keepalive: true,
+    }).then(
+      () => undefined,
+      () => undefined,
+    );
+  }
+
+  async function startReplay() {
+    if (shouldIgnore()) return;
+    if (!replayEnabled) return;
+    if (replayStarted) return;
+    replayStarted = true;
+
+    try {
+      const mod: any = await import('rrweb');
+      const record = mod?.record ?? mod?.default?.record;
+      if (typeof record !== 'function') return;
+
+      const stop = record({
+        emit: (event: any) => {
+          if (!replayEnabled || shouldIgnore()) return;
+          replayQueue.push(event);
+          if (replayQueue.length >= 120) void flushReplay();
+          else scheduleReplayFlush();
+        },
+        maskAllInputs: replayMaskAllInputs,
+      });
+      replayStop = typeof stop === 'function' ? stop : null;
+    } catch {
+      // ignore
+    }
+  }
+
+  function stopReplay() {
+    replayEnabled = false;
+    try {
+      if (replayStop) replayStop();
+    } catch {
+      // ignore
+    }
+    replayStop = null;
+  }
+
   function ensureVisit(extra: Record<string, unknown> = {}) {
     if (shouldIgnore()) return;
     if (sessionStorage.getItem(trackingVisitSentKey) === '1') return;
     sessionStorage.setItem(trackingVisitSentKey, '1');
     track('visit', extra);
     void flush();
+    void startReplay();
   }
 
   function buildTimingSummary(base: Omit<TelemetrySummary, 'session_seconds' | 'active_seconds' | 'idle_seconds'>): TelemetrySummary {
@@ -388,21 +493,26 @@ export function createTelemetryClient(options: TelemetryClientOptions = {}) {
     );
 
     ensureIdleChecker();
-    ensureFingerprintId();
-    if (fingerprintPromise) {
-      fingerprintPromise.then((id) => {
-        if (!id) return;
-        track('fingerprint_ready', { fingerprint_id: id });
-        void flush();
-      });
+    if (fingerprinting) {
+      ensureFingerprintId();
+      if (fingerprintPromise) {
+        fingerprintPromise.then((id) => {
+          if (!id) return;
+          track('fingerprint_ready', { fingerprint_id: id });
+          void flush();
+        });
+      }
     }
   }
 
   return {
     track,
     flush,
+    flushReplay,
     ensureVisit,
     buildTimingSummary,
     installGlobalTracking,
+    startReplay,
+    stopReplay,
   };
 }

@@ -1,16 +1,50 @@
 {
-  "name": "dossier",
-  "private": true,
+  "name": "@trevor050/dossier",
+  "private": false,
   "version": "0.1.0",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/trevor050/dossier.git"
+  },
   "scripts": {
     "dev": "vercel dev",
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
+    "prepack": "npm run build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run typecheck"
   },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./client": {
+      "types": "./dist/src/tracking/index.d.ts",
+      "default": "./dist/src/tracking/index.js"
+    },
+    "./client/*": {
+      "types": "./dist/src/tracking/*.d.ts",
+      "default": "./dist/src/tracking/*.js"
+    },
+    "./api/*": {
+      "types": "./dist/api/*.d.ts",
+      "default": "./dist/api/*.js"
+    },
+    "./api/admin/*": {
+      "types": "./dist/api/admin/*.d.ts",
+      "default": "./dist/api/admin/*.js"
+    },
+    "./server/*": {
+      "types": "./dist/server/*.d.ts",
+      "default": "./dist/server/*.js"
+    }
+  },
   "dependencies": {
     "@fingerprintjs/fingerprintjs": "^5.0.1",
-    "pg": "^8.17.1"
+    "pg": "^8.17.1",
+    "rrweb": "^2.0.0-alpha.4"
   },
   "devDependencies": {
     "@types/node": "^25.0.9",

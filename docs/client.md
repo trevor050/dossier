@@ -1,11 +1,11 @@
 # Client integration
 
-Dossier ships as plain TypeScript utilities you can copy into any Vite/SPA or framework project.
+Dossier ships as a package you can import into any Vite/SPA or framework project.
 
 ## Plug-and-play
 
 ```ts
-import { initDossier } from './tracking';
+import { initDossier } from '@trevor050/dossier/client';
 
 initDossier();
 ```
@@ -20,25 +20,28 @@ initDossier();
 ## Advanced
 
 ```ts
-import { initDossier } from './tracking';
+import { initDossier } from '@trevor050/dossier/client';
 
 initDossier({
   endpoint: 'https://YOUR-DOSSIER-DOMAIN/api/collect',
   shouldIgnore: () => false,
   installGlobalTracking: true,
+  fingerprinting: true,
+  replay: { sampleRate: 0.1, maskAllInputs: true },
 });
 ```
 
 ## Manual wiring
 
 ```ts
-import { getTrackerConfig } from './tracking/config';
-import { createTelemetryClient } from './tracking/telemetry';
+import { getTrackerConfig } from '@trevor050/dossier/client/config';
+import { createTelemetryClient } from '@trevor050/dossier/client/telemetry';
 
 const trackerConfig = getTrackerConfig();
 const telemetry = createTelemetryClient({
   endpoint: trackerConfig.endpoint ?? 'https://YOUR-DOSSIER-DOMAIN/api/collect',
   persistVisitorId: trackerConfig.persist,
+  replaySampleRate: 0.1,
 });
 
 telemetry.installGlobalTracking();
@@ -46,6 +49,7 @@ telemetry.ensureVisit();
 
 window.addEventListener('pagehide', () => {
   void telemetry.flush({ useBeacon: true });
+  void telemetry.flushReplay({ useBeacon: true });
 });
 ```
 

@@ -1,36 +1,81 @@
 # Quickstart
 
-This guide assumes the standard setup: **one Dossier deployment per website**.
+This guide covers the two supported setups:
 
-## 0) Create a new instance
+- Package install into an existing app (single Vercel project)
+- Standalone Dossier deployment (optional)
 
-Use one of these:
+## Option A (recommended): install as a package
 
-- GitHub: click "Use this template" on the Dossier repo
-- CLI: `npx degit trevor050/dossier my-dossier`
+### 1) Install
 
-## 1) Deploy Dossier
+```bash
+npm install @trevor050/dossier
+```
 
-Deploy the new repo to Vercel (no framework required).
+Until the npm package is published, you can install from GitHub:
 
-## 2) Configure env vars
+```bash
+npm install github:trevor050/dossier
+```
 
-Required:
+### 2) Add Vercel `api/` shims
 
-- `DATABASE_URL` (or `POSTGRES_URL*`)
-- `ADMIN_TOKEN`
+Create these files in your app:
 
-Optional:
+```ts
+// api/collect.ts
+export { default } from '@trevor050/dossier/api/collect';
+```
 
-- `IPINFO_TOKEN`
-- `REPORT_ALLOWED_HOSTS`
-- `BOT_SCORE_THRESHOLD` (default `6`)
+```ts
+// api/admin/index.ts
+export { default } from '@trevor050/dossier/api/admin/index';
+```
 
-## 3) Integrate with your site
+Add the rest of the admin endpoints by copying the 1-line re-exports from this repo’s `api/admin/*`.
 
-### Option A: Same-origin proxy (recommended)
+Replay is optional:
 
-Add a rewrite in your site's `vercel.json`:
+```ts
+// api/replay.ts
+export { default } from '@trevor050/dossier/api/replay';
+```
+
+### 3) Configure env vars
+
+Server (required):
+
+```bash
+DATABASE_URL=postgres://...
+ADMIN_TOKEN=long-random-secret
+```
+
+Client (Vite):
+
+```bash
+VITE_TRACKER_ENDPOINT=/api/collect
+VITE_TRACKER_PERSIST=localStorage
+```
+
+### 4) Add the client snippet
+
+```ts
+import { initDossier } from '@trevor050/dossier/client';
+
+initDossier({
+  endpoint: '/api/collect',
+  replay: { sampleRate: 0.1 }, // optional
+});
+```
+
+### 5) Open the dashboard
+
+Visit `/api/admin` and enter `ADMIN_TOKEN`.
+
+## Option B: standalone Dossier deployment
+
+If you want Dossier deployed separately, deploy this repo to Vercel and proxy it from your site with a rewrite:
 
 ```json
 {
@@ -43,40 +88,6 @@ Add a rewrite in your site's `vercel.json`:
 }
 ```
 
-Then set:
+Then set `VITE_TRACKER_ENDPOINT=/api/collect`.
 
-```
-VITE_TRACKER_ENDPOINT=/api/collect
-```
-
-### Option B: Direct cross-origin
-
-Point your client at Dossier directly:
-
-```
-VITE_TRACKER_ENDPOINT=https://YOUR-DOSSIER-DOMAIN/api/collect
-```
-
-Add your site domain(s) to `REPORT_ALLOWED_HOSTS` in Dossier.
-
-## 4) Add the client snippet
-
-```ts
-import { initDossier } from './tracking';
-
-initDossier();
-```
-
-## 5) Open the dashboard
-
-Visit `/api/admin` and enter your `ADMIN_TOKEN`.
-
-## Drop-in install (existing project)
-
-If you want Dossier embedded inside an existing app, run:
-
-```bash
-npx degit trevor050/dossier .dossier
-node .dossier/scripts/install.mjs --target . --write-package --update-tsconfig
-rm -rf .dossier
-```
+If you use direct cross-origin instead, add your site domain(s) to `REPORT_ALLOWED_HOSTS`.
