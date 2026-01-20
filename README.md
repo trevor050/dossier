@@ -101,6 +101,8 @@ See `docs/quickstart.md`.
 - `docs/quickstart.md`
 - `docs/client.md`
 - `docs/api.md`
+- `docs/identity.md`
+- `ROADMAP.md`
 
 ## Project layout
 
