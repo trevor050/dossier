@@ -44,12 +44,10 @@ export { default } from '@trevor050/dossier/api/collect';
 export { default } from '@trevor050/dossier/api/replay';
 ```
 
-```ts
-// api/admin/index.ts
-export { default } from '@trevor050/dossier/api/admin/index';
-```
+#### Admin (two options)
 
-Copy the rest of the admin endpoints from `api/admin/*` in this repo (they are all 1-line re-exports).
+- **Option 1 (simple, more functions):** create `api/admin/*` files that re-export the matching handler from Dossier.
+- **Option 2 (Hobby-plan friendly):** collapse admin into a single function (`api/admin.ts`) and add a rewrite. See `docs/quickstart.md`.
 
 ### 3) Configure env vars
 
