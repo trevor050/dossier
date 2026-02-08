@@ -1,8 +1,20 @@
 # Dossier
 
-Personal-scale, first-party analytics (plus optional session replay) for low-traffic sites.
+### Personal-scale analytics for when you care about the person, not the percentage.
 
-Dossier is built for the "send to a few recruiters and see what they opened" use case.
+Dossier is a free, open-source analytics framework built for the "I sent my portfolio to five people and I want to see exactly what they did" use case. 
+
+Most analytics tools are built for sites with millions of visitors. GA4 is a corporate nightmare to set up, and paid tools like Hotjar or Plausible are too expensive for a hobby project or personal portfolio. Dossier is built to run on serverless functions with a Postgres backend, meaning it stays in the free tier for low-traffic sites while giving you deep, individual-level insights.
+
+## Why use this?
+
+Traditional analytics tell you that 10 people visited your site. Dossier tells you that a specific person from New Jersey spent three minutes on your "Projects" page, scrolled to the bottom of your "About" section, and then rewatched a session replay of your UI.
+
+*   **Recruiter Tracking:** See if the people you actually care about are looking at your work.
+*   **Zero-Cost Scaling:** Built for Vercel Functions and Postgres (Neon/Supabase), keeping your stack free.
+*   **Deep Identity:** Groups sessions by fingerprints and IPs so you can track a single user’s journey over multiple days.
+*   **Session Replay:** Built-in rrweb support to watch exactly how users interact with your UI without paying for a premium subscription.
+*   **Privacy-First:** No third-party cookies or scripts that get nuked by adblockers. It is your data, on your domain.
 
 ## What you get
 
