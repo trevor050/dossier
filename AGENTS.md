@@ -24,3 +24,5 @@ Self-hosted person-level analytics. Package `@trevor050/dossier` (not yet on npm
 - `is_bot` is sticky (OR) per session unless `visitors.bot_override` is set.
 - Admin cookie Path = request pathname (`/api/admin`). Mount path agnostic; dashboard uses `location.pathname` as API base.
 - Tracker must not write storage before privacy checks (tested).
+- Session timing source of truth = `session_pages` (one row per page load, highest `seq` wins, rolled up on read by `rollup.ts`). `sessions.active_seconds/sections/pages` are only a cache refreshed on write. Never add to running totals. No pageview id ⇒ `_legacy` key (last write wins, ordered by session_seconds).
+- Clicks: count via `admin/actions.ts` (`collapseActions`), never `COUNT(*)` over events; one action can be click_target+open_overlay or click_target+click_link.

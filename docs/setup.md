@@ -111,14 +111,16 @@ It returns `{ enabled, track, enter, leave, flush, optOut, stop }`. When trackin
 | `section_view` | First time a section is in view while the visitor is active |
 | `section_enter` | `dossier.enter(key)` |
 | `scroll_depth` | At 25 / 50 / 75 / 100% |
-| `click_target` | Click on a `[data-track]` element |
+| `click_target` | Click on a `[data-track]` element (with the destination, if it is a link) |
 | `hover` | Pointer over a `[data-track]` element for at least 600 ms |
-| `click_link` | Click on any link (host and path only) |
+| `click_link` | Click on any other link (host and path only) |
 | `pageview` | Client-side navigation (`pushState`, `popstate`) |
 | `js_error` | Uncaught errors and unhandled rejections (message only) |
 | `perf` | Time to first byte and load time |
 
-Plus a summary (active, idle and total seconds, interactions, time per section, pages, max scroll) sent when the tab is hidden, when the page is closed, and every 30 seconds while active.
+Plus a summary (active, idle and total seconds, interactions, time per section, pages, max scroll) sent when the tab is hidden, when the page is closed, and every 30 seconds while active. Summaries are cumulative for one page load and numbered; the collector keeps the latest per page load and adds page loads together, so a visit across several pages is counted in full and repeated posts are never double counted.
+
+If your app reports one user action as two events (say `click_target` and `open_overlay` for the same key), the dashboard counts it once.
 
 A session ends after 30 minutes without activity or when the tab is closed.
 
