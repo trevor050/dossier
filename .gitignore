@@ -9,3 +9,4 @@ src/generated
 .vercel
 .DS_Store
 *.tgz
+dashboard/world.gen.ts

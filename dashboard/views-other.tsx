@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { WORLD_PATH } from '../src/generated/world.js';
+import { WORLD_PATH } from './world.gen.js';
 import { ago, bytes, dateTime, duration, href, plural, post, useApi } from './lib.js';
 
 type MapData = {
@@ -59,6 +59,7 @@ export function MapView({ bots }: { bots: boolean }) {
         </svg>
         <p class="muted small">{hover ?? 'Locations come from Vercel geo headers or IP enrichment, accurate to roughly city level at best.'}</p>
       </section>
+      {places.length > 0 && (
       <section class="block">
         <h2>Places</h2>
         <table>
@@ -80,6 +81,7 @@ export function MapView({ bots }: { bots: boolean }) {
           </tbody>
         </table>
       </section>
+      )}
     </>
   );
 }

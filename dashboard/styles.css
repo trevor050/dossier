@@ -117,6 +117,7 @@ button {
   border-radius: 6px;
   padding: 6px 12px;
   cursor: pointer;
+  white-space: nowrap;
 }
 button:hover:not(:disabled) {
   border-color: var(--ink-2);
