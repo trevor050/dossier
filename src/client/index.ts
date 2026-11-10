@@ -135,8 +135,11 @@ function trimLong(v: string | null | undefined, max: number): string | undefined
   return v.length > max ? v.slice(0, max) : v;
 }
 
-/** Read and persist the named-link tag, then remove it (and `?dossier=`) from the address bar. */
-function captureLinkTag(params: string[], strip: boolean): string | null {
+/**
+ * Read the named-link tag and apply `?dossier=off|on`, then remove both from the
+ * address bar. The tag is only persisted when tracking is actually enabled.
+ */
+function readParams(params: string[], strip: boolean): { tag: string | null; clean: () => void } {
   const url = new URL(location.href);
   let tag: string | null = null;
   for (const p of params) {
@@ -144,12 +147,12 @@ function captureLinkTag(params: string[], strip: boolean): string | null {
     if (v && !tag) tag = v.trim().slice(0, 120) || null;
   }
   const optParam = applyOptParam(url);
-  if (tag) safe(() => localStorage.setItem(K.tag, tag!), undefined);
-  if (strip && (tag || optParam)) {
+  const clean = () => {
+    if (!strip || (!tag && !optParam)) return;
     for (const p of [...params, OPT_PARAM]) url.searchParams.delete(p);
     safe(() => history.replaceState(history.state, '', url.pathname + url.search + url.hash), undefined);
-  }
-  return tag ?? safe(() => localStorage.getItem(K.tag), null);
+  };
+  return { tag, clean };
 }
 
 /**
@@ -167,11 +170,16 @@ export function initDossier(options: DossierOptions = {}): Dossier {
 
 function start(options: DossierOptions): Dossier {
   const linkParams = Array.isArray(options.linkParam) ? options.linkParam : [options.linkParam ?? 'to', ...(options.linkParam ? [] : ['ref'])];
-  const tag = captureLinkTag(linkParams, options.stripParams !== false);
+  const params = readParams(linkParams, options.stripParams !== false);
+  params.clean();
 
   const ignore = options.ignore;
   const ignored = () => (typeof ignore === 'function' ? safe(ignore, true) : ignore === true);
+  // Disabled browsers get no storage writes at all.
   if (ignored() || isOptedOut() || (options.respectPrivacySignals !== false && privacySignal())) return noop;
+
+  if (params.tag) safe(() => localStorage.setItem(K.tag, params.tag!), undefined);
+  const tag = params.tag ?? safe(() => localStorage.getItem(K.tag), null);
 
   const endpoint = options.endpoint ?? '/api/collect';
   const replayEndpoint = withQuery(endpoint, { kind: 'replay' });

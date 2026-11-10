@@ -67,7 +67,10 @@ describe('initDossier', () => {
 
   it('honors Global Privacy Control and Do Not Track by default', () => {
     setNavigator({ globalPrivacyControl: true });
+    setUrl('/?to=someone');
     expect(initDossier().enabled).toBe(false);
+    expect(localStorage.length).toBe(0); // nothing written for a GPC browser
+    expect(location.search).toBe(''); // but the tag is still removed from the URL
     setNavigator({ globalPrivacyControl: false, doNotTrack: '1' });
     expect(initDossier().enabled).toBe(false);
     expect(initDossier({ respectPrivacySignals: false, sections: false }).enabled).toBe(true);
