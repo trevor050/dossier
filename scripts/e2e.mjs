@@ -12,19 +12,12 @@ const fail = (msg) => {
   process.exitCode = 1;
 };
 
-const browser = await chromium.launch();
-// Look like a normal browser; the bot check below uses a plain headless context.
-// (Headless Chromium sends beacons with its real UA, so the headers are forced for every request.)
+// Look like a normal browser. The UA has to be set at launch: headless Chromium sends
+// beacons with its own "HeadlessChrome" UA regardless of context overrides, and the
+// collector (correctly) treats that as a bot. The bot check below uses a plain launch.
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
-const context = await browser.newContext({
-  viewport: { width: 1280, height: 800 },
-  locale: 'en-US',
-  userAgent: UA,
-  extraHTTPHeaders: { 'user-agent': UA, 'accept-language': 'en-US,en;q=0.9' },
-});
-await context.route('**/api/collect**', (route) =>
-  route.continue({ headers: { ...route.request().headers(), 'user-agent': UA, 'accept-language': 'en-US,en;q=0.9' } }),
-);
+const browser = await chromium.launch({ args: [`--user-agent=${UA}`, '--lang=en-US'] });
+const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: 'en-US', userAgent: UA });
 await context.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => false }));
 const page = await context.newPage();
 const posts = [];
@@ -47,21 +40,29 @@ await page.waitForTimeout(3000);
 await page.click('dialog button');
 await page.fill('input', 'secret@example.com');
 await page.waitForTimeout(6000); // let the replay flush timer fire
-// Send the summary explicitly, then detach the tracker: headless Chromium sends pagehide
-// beacons with its real "HeadlessChrome" UA, which would (correctly) flag this visit as a bot.
-await page.evaluate(() => window.dossier.flush());
-await page.evaluate(() => window.dossier.optOut());
-await page.goto('about:blank');
-await page.waitForTimeout(500);
+
+// A second page load in the same visit (full navigation, same session). Its summary must add to the
+// first page's, not replace it. The first page's summary goes out in its pagehide beacon.
+await page.goto(`${base}/?part=2`, { waitUntil: 'networkidle' });
+await page.mouse.move(200, 200);
+await page.evaluate(() => document.getElementById('about').scrollIntoView());
+await page.mouse.move(250, 260);
+await page.waitForTimeout(3000);
+await page.mouse.move(260, 280);
+await page.waitForTimeout(2000);
+await page.goto('about:blank'); // pagehide -> summary beacon for page 2
+await page.waitForTimeout(1500);
+await browser.close();
 
 // A plain headless visit should be filtered as a bot.
 const botTag = `${tag}-bot`;
-const botPage = await (await browser.newContext()).newPage();
+const botBrowser = await chromium.launch();
+const botPage = await (await botBrowser.newContext()).newPage();
 await botPage.goto(`${base}/?to=${botTag}`, { waitUntil: 'networkidle' });
 await botPage.waitForTimeout(1000);
 await botPage.goto('about:blank');
 await botPage.waitForTimeout(1000);
-await browser.close();
+await botBrowser.close();
 
 console.log(`collector POSTs: ${posts.length} (${posts.filter((u) => u.includes('kind=replay')).length} replay)`);
 
@@ -80,7 +81,12 @@ if (!person) {
   const s = detail.sessions[0];
   console.log(`person: ${person.name} · ${person.visits} visit · ${person.active_seconds}s active`);
   console.log(`sections: ${detail.attention.map((d) => `${d.key}=${d.seconds}s`).join(', ')}`);
-  console.log(`clicks: ${detail.clicks.map((c) => c.label).join(', ')}`);
+  console.log(`clicks: ${detail.clicks.map((c) => `${c.label}×${c.count}`).join(', ')}`);
+  console.log(`pages: ${s.pages.join(' -> ')} · visit active ${s.active_seconds}s`);
+  if (detail.sessions.length !== 1) fail(`expected one visit across both page loads, got ${detail.sessions.length}`);
+  if (!(s.pages.includes('/?keep=1') && s.pages.includes('/?part=2'))) fail(`page list lost a page: ${JSON.stringify(s.pages)}`);
+  if (!detail.attention.some((d) => d.key === 'about')) fail('second page sections missing');
+  if (detail.clicks.some((c) => c.count > 1)) fail('a single click was counted more than once');
   if (person.active_seconds < 5) fail('active time not recorded');
   for (const key of ['projects', 'resume']) if (!detail.attention.some((d) => d.key === key)) fail(`no dwell for ${key}`);
   if (!detail.clicks.some((c) => c.label === 'project-orbit')) fail('click not recorded');

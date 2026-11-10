@@ -2,6 +2,9 @@ import type { Dwell } from '../../protocol.js';
 import type { Db } from '../db.js';
 import { clusterVisitors, loadEdges, resolveLinks, type Link } from '../identity.js';
 import { makeDisplayName } from '../names.js';
+import { mergeDwell, rollupPageViews, type PageViewRow } from '../rollup.js';
+
+export { mergeDwell };
 
 /** One session row, shaped for the dashboard. */
 export type SessionView = {
@@ -104,16 +107,6 @@ function dwell(v: unknown): Dwell[] {
     .map((d) => ({ key: d.key, seconds: num(d.seconds) }));
 }
 
-export function mergeDwell(lists: Dwell[][], limit = Infinity): Dwell[] {
-  const total = new Map<string, number>();
-  for (const list of lists) for (const d of list) total.set(d.key, (total.get(d.key) ?? 0) + d.seconds);
-  return [...total.entries()]
-    .map(([key, seconds]) => ({ key, seconds }))
-    .filter((d) => d.seconds > 0)
-    .sort((a, b) => b.seconds - a.seconds || a.key.localeCompare(b.key))
-    .slice(0, limit);
-}
-
 function place(geo: unknown): Place | null {
   if (!geo || typeof geo !== 'object') return null;
   const g = geo as Record<string, unknown>;
@@ -159,7 +152,7 @@ export async function loadSessions(
       LIMIT $4`,
     [opts.days, opts.includeBots, opts.vids ?? null, opts.limit ?? 5000],
   );
-  return rows.reverse().map((r) => {
+  const records: SessionRecord[] = rows.reverse().map((r) => {
     const device = (r.device ?? {}) as Record<string, unknown>;
     const ipinfo = (r.ipinfo ?? {}) as Record<string, unknown>;
     const sections = dwell(r.sections);
@@ -199,6 +192,38 @@ export async function loadSessions(
       overlays_raw: r.overlays,
     };
   });
+  return applyPageViews(db, records);
+}
+
+/**
+ * Replace each session's timing with the roll-up of its per-page summaries.
+ * Sessions with no page summaries (no summary received yet, or demo data) keep
+ * the values stored on the session row.
+ */
+async function applyPageViews(db: Db, records: SessionRecord[]): Promise<SessionRecord[]> {
+  if (!records.length) return records;
+  const { rows } = await db.query<PageViewRow & { sid: string }>(
+    `SELECT sid, pvid, started_at, page, summary FROM session_pages WHERE sid = ANY($1::text[])`,
+    [records.map((r) => r.sid)],
+  );
+  const bySid = new Map<string, PageViewRow[]>();
+  for (const row of rows) {
+    const list = bySid.get(row.sid);
+    if (list) list.push(row);
+    else bySid.set(row.sid, [row]);
+  }
+  for (const rec of records) {
+    const views = bySid.get(rec.sid);
+    if (!views) continue;
+    const total = rollupPageViews(views);
+    rec.active_seconds = total.active_seconds;
+    rec.session_seconds = total.session_seconds;
+    rec.interactions = total.interactions;
+    rec.sections = total.sections;
+    rec.pages = total.pages;
+    rec.max_scroll_pct = total.max_scroll_pct;
+  }
+  return records;
 }
 
 export function publicSession(s: SessionRecord): SessionView {

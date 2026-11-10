@@ -229,6 +229,10 @@ function start(options: DossierOptions): Dossier {
   const queue: WireEvent[] = [];
   const pages = new Set<string>([location.pathname + location.search]);
   let seq = 0;
+  // Summaries are cumulative per page load; the collector keeps the highest summarySeq per pageviewId.
+  const pageviewId = randomId();
+  const pageviewStartedAt = new Date().toISOString();
+  let summarySeq = 0;
   let maxScroll = 0;
   const scrollMarks = new Set<number>();
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -251,6 +255,9 @@ function start(options: DossierOptions): Dossier {
   function summary(): WireSummary {
     tick();
     return {
+      pageview_id: pageviewId,
+      seq: ++summarySeq,
+      started_at: pageviewStartedAt,
       ...clock.snapshot(now()),
       sections: dwell.list(),
       pages: [...pages].slice(0, 50),
@@ -410,18 +417,20 @@ function start(options: DossierOptions): Dossier {
       const target = e.target instanceof Element ? e.target : null;
       if (!target) return;
       const tracked = target.closest('[data-track]');
+      const a = target.closest('a');
+      const u = a?.href ? safe(() => new URL(a.href), null) : null;
+      const link = u && /^https?:|^mailto:|^tel:/.test(u.protocol)
+        ? { host: u.host || u.protocol.replace(':', ''), path: trimLong(u.pathname, 300) }
+        : null;
+      // One click is one event: a tracked link reports its destination on the click_target.
       if (tracked) {
         track('click_target', {
           target: trimLong(tracked.getAttribute('data-track'), 120),
           group: trimLong(tracked.getAttribute('data-track-group'), 80),
+          ...(link ?? {}),
         });
-      }
-      const a = target.closest('a');
-      if (a?.href) {
-        const u = safe(() => new URL(a.href), null);
-        if (u && /^https?:|^mailto:|^tel:/.test(u.protocol)) {
-          track('click_link', { host: u.host || u.protocol.replace(':', ''), path: trimLong(u.pathname, 300) });
-        }
+      } else if (link) {
+        track('click_link', link);
       }
     },
     { capture: true, passive: true },
@@ -545,7 +554,7 @@ function start(options: DossierOptions): Dossier {
   }
 
   // ---- go -----------------------------------------------------------------
-  track('visit', { title: trimLong(document.title, 200) });
+  track('visit', { title: trimLong(document.title, 200), path: trimLong(location.pathname + location.search, 300) });
   void send();
   on(
     window,

@@ -10,6 +10,12 @@ export type WireEvent = {
 export type Dwell = { key: string; seconds: number };
 
 export type WireSummary = {
+  /** Random id for this page load. Summaries are cumulative per page load. */
+  pageview_id?: string;
+  /** Increments with every summary sent for this page load; the highest wins. */
+  seq?: number;
+  /** When this page load started (ISO 8601). Orders pages within a session. */
+  started_at?: string;
   session_seconds?: number;
   active_seconds?: number;
   idle_seconds?: number;

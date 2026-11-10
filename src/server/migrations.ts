@@ -210,6 +210,42 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_sessions_ref_tag ON sessions(ref_tag);
     `,
   },
+  {
+    id: 3,
+    name: 'per-page-summaries',
+    sql: `
+      -- One row per page load. A session's timing is the sum over its page loads;
+      -- within a page load the summary with the highest seq replaces earlier ones.
+      CREATE TABLE IF NOT EXISTS session_pages (
+        sid TEXT NOT NULL REFERENCES sessions(sid) ON DELETE CASCADE,
+        pvid TEXT NOT NULL,
+        seq INTEGER NOT NULL DEFAULT 0,
+        started_at TIMESTAMPTZ NOT NULL,
+        page TEXT,
+        summary JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (sid, pvid)
+      );
+
+      -- Existing summaries become a single legacy page view, so nothing recorded so far is lost
+      -- and trackers without page view ids keep their last-write-wins behavior.
+      INSERT INTO session_pages (sid, pvid, seq, started_at, page, summary)
+      SELECT sid, '_legacy', COALESCE(session_seconds, 0), started_at, page,
+             jsonb_strip_nulls(jsonb_build_object(
+               'active_seconds', active_seconds,
+               'idle_seconds', idle_seconds,
+               'session_seconds', session_seconds,
+               'interactions', interactions,
+               'first_interaction_seconds', first_interaction_seconds,
+               'sections', sections,
+               'overlays', overlays,
+               'pages', pages,
+               'max_scroll_pct', max_scroll_pct))
+        FROM sessions
+       WHERE active_seconds IS NOT NULL OR session_seconds IS NOT NULL OR sections IS NOT NULL OR overlays IS NOT NULL
+      ON CONFLICT (sid, pvid) DO NOTHING;
+    `,
+  },
 ];
 
 export const LATEST_MIGRATION = MIGRATIONS[MIGRATIONS.length - 1]!.id;

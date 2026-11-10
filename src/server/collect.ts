@@ -20,6 +20,7 @@ import { assertSchemaReady, SchemaNotReadyError } from './migrations.js';
 import { makeDisplayName } from './names.js';
 import { getSettings, pruneExpired } from './retention.js';
 import { RateLimiter } from './security.js';
+import { LEGACY_PAGEVIEW, rollupPageViews, type PageViewRow, type PageViewSummary } from './rollup.js';
 import { parseUserAgent } from './ua.js';
 import { LIMITS, parseCollect, parseReplay, type CollectInput } from './validate.js';
 
@@ -283,35 +284,7 @@ async function ingestEvents(db: Db, req: Request, body: unknown, ip: string | nu
   await insertEvents(db, input, Number(session.event_count ?? 0), config.maxEventsPerSession);
 
   if (input.summary) {
-    const s = input.summary;
-    await db.query(
-      `UPDATE sessions SET
-         ended_at = NOW(), updated_at = NOW(),
-         first_interaction_seconds = COALESCE($2, first_interaction_seconds),
-         interactions = GREATEST(COALESCE(interactions, 0), COALESCE($3, 0)),
-         active_seconds = GREATEST(COALESCE(active_seconds, 0), COALESCE($4, 0)),
-         idle_seconds = GREATEST(COALESCE(idle_seconds, 0), COALESCE($5, 0)),
-         session_seconds = GREATEST(COALESCE(session_seconds, 0), COALESCE($6, 0)),
-         sections = COALESCE($7::jsonb, sections),
-         overlays = COALESCE($8::jsonb, overlays),
-         overlays_unique = COALESCE($9, overlays_unique),
-         pages = COALESCE($10::jsonb, pages),
-         max_scroll_pct = GREATEST(COALESCE(max_scroll_pct, 0), COALESCE($11, 0))
-       WHERE sid = $1`,
-      [
-        input.sid,
-        s.firstInteractionSeconds,
-        s.interactions,
-        s.activeSeconds,
-        s.idleSeconds,
-        s.sessionSeconds,
-        s.sections ? JSON.stringify(s.sections) : null,
-        s.overlays ? JSON.stringify(s.overlays) : null,
-        s.overlaysUnique,
-        s.pages ? JSON.stringify(s.pages) : null,
-        s.maxScrollPct,
-      ],
-    );
+    await storePageSummary(db, input, input.summary);
 
     // Low-traffic sites rarely have cron, so retention piggybacks on occasional requests.
     if (Math.random() < 0.02) {
@@ -321,6 +294,59 @@ async function ingestEvents(db: Db, req: Request, body: unknown, ip: string | nu
     }
   }
   return 204;
+}
+
+/**
+ * Keep the latest summary per page load, then refresh the session's cached totals.
+ * The cache is a convenience for direct SQL users; the dashboard always rolls up
+ * `session_pages` itself, so a lost race here can never show wrong numbers.
+ */
+async function storePageSummary(db: Db, input: CollectInput, s: NonNullable<CollectInput['summary']>) {
+  const pvid = s.pageviewId ?? LEGACY_PAGEVIEW;
+  // Trackers before 0.2.1 send no seq; their session_seconds only grows within a page, so it orders them too.
+  const seq = s.seq ?? s.sessionSeconds ?? 0;
+  const startedAt = s.startedAt ?? input.events[0]?.ts ?? new Date();
+  const summary: PageViewSummary = {
+    active_seconds: s.activeSeconds,
+    idle_seconds: s.idleSeconds,
+    session_seconds: s.sessionSeconds,
+    interactions: s.interactions,
+    first_interaction_seconds: s.firstInteractionSeconds,
+    sections: s.sections,
+    overlays: s.overlays,
+    pages: s.pages,
+    max_scroll_pct: s.maxScrollPct,
+  };
+  await db.query(
+    `INSERT INTO session_pages (sid, pvid, seq, started_at, page, summary)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+     ON CONFLICT (sid, pvid) DO UPDATE SET
+       seq = EXCLUDED.seq, summary = EXCLUDED.summary, page = COALESCE(EXCLUDED.page, session_pages.page), updated_at = NOW()
+     WHERE EXCLUDED.seq >= session_pages.seq`,
+    [input.sid, pvid, seq, startedAt.toISOString(), input.page, JSON.stringify(summary)],
+  );
+
+  const { rows } = await db.query<PageViewRow>(`SELECT pvid, started_at, page, summary FROM session_pages WHERE sid = $1`, [input.sid]);
+  const total = rollupPageViews(rows);
+  await db.query(
+    `UPDATE sessions SET
+       ended_at = NOW(), updated_at = NOW(),
+       active_seconds = $2, idle_seconds = $3, session_seconds = $4, interactions = $5,
+       first_interaction_seconds = $6, sections = $7::jsonb, pages = $8::jsonb, max_scroll_pct = $9,
+       overlays = NULL -- folded into sections by the rollup
+     WHERE sid = $1`,
+    [
+      input.sid,
+      total.active_seconds,
+      total.idle_seconds,
+      total.session_seconds,
+      total.interactions,
+      total.first_interaction_seconds,
+      JSON.stringify(total.sections),
+      JSON.stringify(total.pages),
+      total.max_scroll_pct,
+    ],
+  );
 }
 
 async function insertEvents(db: Db, input: CollectInput, already: number, cap: number) {

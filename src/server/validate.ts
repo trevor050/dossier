@@ -13,6 +13,10 @@ export type CollectInput = {
   orientation: 'portrait' | 'landscape' | null;
   events: Array<{ type: string; ts: Date; seq: number | null; data: Record<string, unknown> | null }>;
   summary: {
+    /** Page load id; null for trackers that predate per-page summaries. */
+    pageviewId: string | null;
+    seq: number | null;
+    startedAt: Date | null;
     sessionSeconds: number | null;
     activeSeconds: number | null;
     idleSeconds: number | null;
@@ -150,6 +154,9 @@ export function parseCollect(body: unknown, now = Date.now()): Result<CollectInp
   if (isObject(body.summary)) {
     const s = body.summary;
     summary = {
+      pageviewId: id(s.pageview_id),
+      seq: int(s.seq, 0, 2_000_000_000),
+      startedAt: typeof s.started_at === 'string' ? eventTs(s.started_at, now) : null,
       sessionSeconds: int(s.session_seconds, 0, LIMITS.maxSeconds),
       activeSeconds: int(s.active_seconds, 0, LIMITS.maxSeconds),
       idleSeconds: int(s.idle_seconds, 0, LIMITS.maxSeconds),

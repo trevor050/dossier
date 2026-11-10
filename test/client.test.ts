@@ -124,3 +124,89 @@ describe('initDossier', () => {
     optIn();
   });
 });
+
+describe('canvas apps that report sections with enter()/leave() (sections: false)', () => {
+  const setVisibility = (state: 'visible' | 'hidden') => {
+    Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+    Object.defineProperty(document, 'hidden', { value: state === 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  };
+  const lastSummary = () => {
+    const withSummary = sent.filter((s) => s.body.summary);
+    return withSummary[withSummary.length - 1]!.body.summary as {
+      pageview_id: string;
+      seq: number;
+      active_seconds: number;
+      sections: Array<{ key: string; seconds: number }>;
+    };
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+    setVisibility('visible');
+    setUrl('/');
+  });
+  afterEach(() => {
+    setVisibility('visible');
+    vi.useRealTimers();
+  });
+
+  /** Advance time with a sign of life every 10s, so the visitor never counts as idle. */
+  const present = (seconds: number) => {
+    for (let t = 0; t < seconds; t += 10) {
+      window.dispatchEvent(new Event('pointermove'));
+      vi.advanceTimersByTime(Math.min(10, seconds - t) * 1000);
+    }
+  };
+
+  it('does not count time while the tab is hidden, and resumes the open section when shown', () => {
+    handle = initDossier({ sections: false });
+    handle.enter('projects');
+    present(20);
+    setVisibility('hidden'); // summary sent here
+    vi.advanceTimersByTime(300_000); // five minutes in another tab
+    setVisibility('visible');
+    present(10);
+    handle.leave('projects');
+    handle.enter('resume');
+    present(5);
+    setVisibility('hidden');
+    const s = lastSummary();
+    expect(s.sections).toEqual([
+      { key: 'projects', seconds: 30 },
+      { key: 'resume', seconds: 5 },
+    ]);
+    expect(s.active_seconds).toBe(35);
+  });
+
+  it('credits the open section up to the moment the page closes, without leave()', () => {
+    handle = initDossier({ sections: false });
+    handle.enter('resume');
+    present(12);
+    window.dispatchEvent(new Event('pagehide'));
+    expect(lastSummary().sections).toEqual([{ key: 'resume', seconds: 12 }]);
+  });
+
+  it('identifies the page load and numbers its summaries so the server keeps only the latest', () => {
+    handle = initDossier({ sections: false });
+    present(3);
+    setVisibility('hidden');
+    const first = lastSummary();
+    setVisibility('visible');
+    present(3);
+    window.dispatchEvent(new Event('pagehide'));
+    const second = lastSummary();
+    expect(second.pageview_id).toBe(first.pageview_id);
+    expect(second.seq).toBeGreaterThan(first.seq);
+    expect(second.active_seconds).toBeGreaterThan(first.active_seconds);
+  });
+
+  it('reports a click on a tracked link as one event', async () => {
+    handle = initDossier({ sections: false });
+    document.body.innerHTML = '<a href="https://github.com/trevor050" data-track="github">GitHub</a>';
+    document.querySelector('a')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await handle.flush();
+    const clicks = sent.flatMap((s) => s.body.events as Array<{ type: string; data: Record<string, unknown> }>).filter((e) => e.type.startsWith('click'));
+    expect(clicks).toEqual([expect.objectContaining({ type: 'click_target', data: expect.objectContaining({ target: 'github', host: 'github.com' }) })]);
+  });
+});

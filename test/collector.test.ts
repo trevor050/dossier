@@ -105,9 +105,9 @@ describe('collector', () => {
     expect(rows[0]!.device).toMatchObject({ browser: 'Chrome', os: 'macOS', type: 'desktop' });
   });
 
-  it('never lets a later summary shrink recorded time', async () => {
-    await post(visit('visitor-bbb', 'session-bbb', { summary: { active_seconds: 50 } }));
-    await post(visit('visitor-bbb', 'session-bbb', { events: [], summary: { active_seconds: 10 } }));
+  it('ignores a stale summary that arrives late (legacy trackers are ordered by their own session_seconds)', async () => {
+    await post(visit('visitor-bbb', 'session-bbb', { summary: { active_seconds: 50, session_seconds: 60 } }));
+    await post(visit('visitor-bbb', 'session-bbb', { events: [], summary: { active_seconds: 10, session_seconds: 20 } }));
     const { rows } = await db.query<{ active_seconds: number }>(`SELECT active_seconds FROM sessions WHERE sid = 'session-bbb'`);
     expect(rows[0]!.active_seconds).toBe(50);
   });
