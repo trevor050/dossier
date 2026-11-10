@@ -1,6 +1,24 @@
 // @vitest-environment happy-dom
+import { Storage } from 'happy-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initDossier, isOptedOut, optIn, type Dossier } from '../src/client/index.js';
+
+// Node 25+ defines its own global localStorage/sessionStorage, which are unusable without
+// --localstorage-file and shadow the ones happy-dom would provide. Use happy-dom's explicitly
+// so the browser-side tests behave the same on every supported Node version.
+const nodeShadowsStorage = (name: 'localStorage' | 'sessionStorage') => {
+  try {
+    return typeof (globalThis as Record<string, unknown>)[name] === 'undefined';
+  } catch {
+    return true;
+  }
+};
+// Defined directly rather than with vi.stubGlobal, because afterEach calls vi.unstubAllGlobals().
+for (const name of ['localStorage', 'sessionStorage'] as const) {
+  if (nodeShadowsStorage(name)) {
+    Object.defineProperty(globalThis, name, { value: new Storage(), configurable: true, writable: true });
+  }
+}
 
 type Sent = { url: string; body: Record<string, unknown> };
 let sent: Sent[];
