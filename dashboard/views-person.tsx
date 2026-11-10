@@ -411,9 +411,17 @@ function VisitRow({ s, linkLabel, viaLink }: { s: Session; linkLabel: string | n
   );
 }
 
+type TimelineEvent = {
+  ts: string;
+  type: string;
+  data: Record<string, unknown> | null;
+  /** Events the server folded into this one because they came from the same user action. */
+  also?: Array<{ type: string; data: Record<string, unknown> | null }>;
+};
+
 type SessionData = {
   session: Session;
-  events: Array<{ ts: string; type: string; data: Record<string, unknown> | null }>;
+  events: Array<TimelineEvent>;
   replay: { chunks: number; bytes: number };
 };
 
@@ -422,15 +430,20 @@ function describe(e: SessionData['events'][number]): string {
   const s = (k: string) => (typeof d[k] === 'string' || typeof d[k] === 'number' ? String(d[k]) : '');
   switch (e.type) {
     case 'visit':
-      return `Arrived${s('title') ? ` on “${s('title')}”` : ''}`;
+      return `Arrived${s('path') ? ` on ${s('path')}` : s('title') ? ` on “${s('title')}”` : ''}`;
     case 'section_view':
       return `Viewed ${s('section')}`;
     case 'section_enter':
       return `Opened ${s('section')}`;
     case 'scroll_depth':
       return `Scrolled ${s('pct')}%`;
-    case 'click_target':
-      return `Clicked ${s('target')}`;
+    case 'click_target': {
+      const link = s('host') ? ` (${s('host')}${s('path')})` : '';
+      const opened = e.also?.some((a) => a.type === 'open_overlay') ? ', which opened it' : '';
+      const followed = e.also?.find((a) => a.type === 'click_link');
+      const to = followed ? ` (${String(followed.data?.host ?? '')}${String(followed.data?.path ?? '')})` : '';
+      return `Clicked ${s('target')}${link || to}${opened}`;
+    }
     case 'click_link':
       return `Clicked a link to ${s('host')}${s('path')}`;
     case 'hover':

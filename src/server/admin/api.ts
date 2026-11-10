@@ -1,4 +1,5 @@
 import type { DossierConfig } from '../config.js';
+import { ACTION_TYPES, collapseActions, countActions, type ActionEvent } from './actions.js';
 import type { Db } from '../db.js';
 import { getSettings } from '../retention.js';
 import {
@@ -46,13 +47,14 @@ export async function person(db: Db, config: DossierConfig, id: string, days: nu
   const summary = summarizePerson(pid, list, labels);
   const vids = summary.vids;
 
-  const { rows: clicks } = await db.query<{ label: string; count: number }>(
-    `SELECT COALESCE(data->>'target', data->>'overlay', CONCAT(data->>'host', data->>'path'), type) AS label, COUNT(*)::int AS count
-       FROM events
-      WHERE vid = ANY($1::text[]) AND type IN ('click_target', 'click_link', 'open_overlay')
-      GROUP BY 1 ORDER BY 2 DESC LIMIT 20`,
-    [vids],
+  // Counted in code so a click that also opened an overlay (or followed a link) counts once.
+  const { rows: actionEvents } = await db.query<ActionEvent & { sid: string }>(
+    `SELECT sid, ts, type, data FROM events
+      WHERE vid = ANY($1::text[]) AND type = ANY($2::text[])
+      ORDER BY ts LIMIT 20000`,
+    [vids, [...ACTION_TYPES]],
   );
+  const clicks = countActions(actionEvents);
   const { rows: ips } = await db.query<Record<string, unknown>>(
     `SELECT si.ip, MAX(si.last_seen_at) AS last_seen, MAX(s.ptr) AS ptr, MAX(s.ipinfo->>'org') AS org
        FROM session_ips si JOIN sessions s ON s.sid = si.sid
@@ -105,7 +107,9 @@ export async function session(db: Db, sid: string) {
   );
   return {
     session: publicSession(s),
-    events: events.map((e) => ({ ts: iso(e.ts), type: e.type, data: e.data ?? null })),
+    events: collapseActions(
+      events.map((e) => ({ sid, ts: iso(e.ts) ?? '', type: String(e.type), data: (e.data ?? null) as Record<string, unknown> | null })),
+    ).map(({ sid: _sid, also, ...e }) => (also ? { ...e, also: also.map(({ sid: _s, ...a }) => a) } : e)),
     replay: { chunks: Number(replay[0]?.chunks ?? 0), bytes: Number(replay[0]?.bytes ?? 0) },
   };
 }
