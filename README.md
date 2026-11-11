@@ -154,7 +154,7 @@ you ─────────────────────────�
 ```bash
 npm install
 npm run build        # bundles the tracker and dashboard, then compiles TypeScript
-npm test             # 78 tests: unit + integration against PGlite
+npm test             # unit + integration tests against PGlite
 npm run typecheck
 npm run demo         # dashboard on fake data at localhost:8787
 ```
