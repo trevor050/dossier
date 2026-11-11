@@ -108,4 +108,29 @@ else console.log(`bot filtered: ${botVisit.reasons}`);
 const humans = await get('overview', { days: 1 });
 if (humans.people.some((p) => p.tags.includes(botTag))) fail('bot visit leaked into People');
 
+// A normal recipient URL must not push Copy off the screen on a phone.
+const layoutLabel = `E2E recipient ${tag}`;
+const linkResponse = await fetch(`${base}/api/admin?api=links`, {
+  method: 'POST',
+  headers: { ...headers, origin: base, 'content-type': 'application/json' },
+  body: JSON.stringify({ label: layoutLabel }),
+});
+if (!linkResponse.ok) throw new Error(`create layout link: HTTP ${linkResponse.status}`);
+const { link: layoutLink } = await linkResponse.json();
+const layoutBrowser = await chromium.launch();
+try {
+  const layoutPage = await (await layoutBrowser.newContext({ extraHTTPHeaders: headers, viewport: { width: 390, height: 844 } })).newPage();
+  await layoutPage.goto(`${base}/api/admin#/l/${layoutLink.id}`);
+  await layoutPage.getByRole('heading', { name: layoutLabel, exact: true }).waitFor();
+  const layout = await layoutPage.evaluate(() => ({
+    width: innerWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+    buttonsFit: [...document.querySelectorAll('.url button')].every((b) => b.getBoundingClientRect().right <= innerWidth),
+  }));
+  if (layout.scrollWidth > layout.width || !layout.buttonsFit) fail(`phone link layout overflows: ${JSON.stringify(layout)}`);
+  else console.log('phone named-link layout: ok');
+} finally {
+  await layoutBrowser.close();
+}
+
 console.log(process.exitCode ? 'E2E FAILED' : 'E2E OK');

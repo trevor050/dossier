@@ -462,6 +462,7 @@ a:focus-visible {
   color: var(--ink);
 }
 .dossier-head {
+  grid-template-columns: minmax(0, 1fr);
   padding-bottom: 18px;
   margin-bottom: 26px;
   border-bottom: 1px solid var(--rule);
