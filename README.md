@@ -107,6 +107,8 @@ Session replay is off unless you ask for it: `data-replay="0.25"` on the script 
 
 Dossier is **first-party and self-hosted**: the script is served from your domain, data goes to your database, and nothing is sent to a third party unless you turn on IP enrichment. There's no ad network, no cross-site tracking, no data sharing.
 
+A named link shows that its URL was opened, not who opened it, because links can be forwarded or guessed.
+
 It is **not anonymous** and doesn't pretend to be. Its whole job is to tell you that a specific person opened a specific link. It stores IP addresses and user agents, can record session replays, and groups visits into people. If you use it, the people you send links to should be able to find out that you do. You are the operator, so disclosure and compliance with whatever applies to you (GDPR, CCPA, your school's policies, etc.) are your responsibility. This README is not legal advice.
 
 What it gives you to be decent about it:
