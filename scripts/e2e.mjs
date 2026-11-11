@@ -16,12 +16,49 @@ const fail = (msg) => {
 // beacons with its own "HeadlessChrome" UA regardless of context overrides, and the
 // collector (correctly) treats that as a bot. The bot check below uses a plain launch.
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
-const browser = await chromium.launch({ args: [`--user-agent=${UA}`, '--lang=en-US'] });
+// WSLg display handles can leave headless Chromium with no animation frames or
+// visibility callbacks. Headless Linux runs do not need a desktop display.
+const headlessOptions = process.platform === 'linux'
+  ? { env: { ...process.env, DISPLAY: '', WAYLAND_DISPLAY: '' } }
+  : {};
+const browser = await chromium.launch({ ...headlessOptions, args: [`--user-agent=${UA}`, '--lang=en-US'] });
 const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: 'en-US', userAgent: UA });
 await context.addInitScript(() => Object.defineProperty(navigator, 'webdriver', { get: () => false }));
+// Reproduce delayed visibility delivery without replacing real observer entries.
+if (Number(process.env.E2E_OBSERVER_DELAY_MS) > 0) await context.addInitScript((delay) => {
+  const Original = window.IntersectionObserver;
+  window.IntersectionObserver = class extends Original {
+    constructor(callback, options) {
+      super((entries, observer) => setTimeout(() => callback(entries, observer), delay), options);
+    }
+  };
+}, Number(process.env.E2E_OBSERVER_DELAY_MS));
 const page = await context.newPage();
 const posts = [];
-page.on('request', (r) => r.method() === 'POST' && r.url().includes('/api/collect') && posts.push(r.url()));
+let lastSummary;
+page.on('request', (r) => {
+  if (r.method() !== 'POST' || !r.url().includes('/api/collect')) return;
+  posts.push(r.url());
+  if (!r.url().includes('kind=replay')) {
+    const body = r.postDataJSON();
+    if (body?.summary) lastSummary = body.summary;
+  }
+});
+
+// A fixed sleep can finish before IntersectionObserver delivers the new section.
+// Wait for the real tracker to report dwell before navigating away from it.
+async function waitForDwell(key, seconds = 2) {
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    await page.mouse.move(250, 260);
+    await page.evaluate(() => window.dossier?.flush());
+    if (lastSummary?.sections?.some((d) => d.key === key && d.seconds >= seconds)) return;
+    await page.waitForTimeout(500);
+  }
+  const state = await page.evaluate(() => ({ visibility: document.visibilityState, scroll: scrollY }));
+  await browser.close();
+  throw new Error(`Timed out waiting for ${key} dwell: ${JSON.stringify({ state, lastSummary })}`);
+}
 
 await page.goto(`${base}/?to=${tag}&keep=1#top`, { waitUntil: 'networkidle' });
 const url = page.url();
@@ -32,11 +69,11 @@ await page.mouse.move(300, 300);
 await page.waitForTimeout(2500);
 await page.evaluate(() => document.getElementById('projects').scrollIntoView());
 await page.mouse.move(400, 320);
-await page.waitForTimeout(3000);
+await waitForDwell('projects');
 await page.click('[data-track="project-orbit"]');
 await page.evaluate(() => document.getElementById('experience').scrollIntoView());
 await page.click('[data-track="open-resume"]');
-await page.waitForTimeout(3000);
+await waitForDwell('resume');
 await page.click('dialog button');
 await page.fill('input', 'secret@example.com');
 await page.waitForTimeout(6000); // let the replay flush timer fire
@@ -47,7 +84,7 @@ await page.goto(`${base}/?part=2`, { waitUntil: 'networkidle' });
 await page.mouse.move(200, 200);
 await page.evaluate(() => document.getElementById('about').scrollIntoView());
 await page.mouse.move(250, 260);
-await page.waitForTimeout(3000);
+await waitForDwell('about');
 await page.mouse.move(260, 280);
 await page.waitForTimeout(2000);
 await page.goto('about:blank'); // pagehide -> summary beacon for page 2
@@ -56,7 +93,7 @@ await browser.close();
 
 // A plain headless visit should be filtered as a bot.
 const botTag = `${tag}-bot`;
-const botBrowser = await chromium.launch();
+const botBrowser = await chromium.launch(headlessOptions);
 const botPage = await (await botBrowser.newContext()).newPage();
 await botPage.goto(`${base}/?to=${botTag}`, { waitUntil: 'networkidle' });
 await botPage.waitForTimeout(1000);
@@ -117,7 +154,7 @@ const linkResponse = await fetch(`${base}/api/admin?api=links`, {
 });
 if (!linkResponse.ok) throw new Error(`create layout link: HTTP ${linkResponse.status}`);
 const { link: layoutLink } = await linkResponse.json();
-const layoutBrowser = await chromium.launch();
+const layoutBrowser = await chromium.launch(headlessOptions);
 try {
   const layoutPage = await (await layoutBrowser.newContext({ extraHTTPHeaders: headers, viewport: { width: 390, height: 844 } })).newPage();
   await layoutPage.goto(`${base}/api/admin#/l/${layoutLink.id}`);

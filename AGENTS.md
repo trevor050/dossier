@@ -26,3 +26,5 @@ Self-hosted person-level analytics. Package `@trevor050/dossier` (not yet on npm
 - Tracker must not write storage before privacy checks (tested).
 - Session timing source of truth = `session_pages` (one row per page load, highest `seq` wins, rolled up on read by `rollup.ts`). `sessions.active_seconds/sections/pages` are only a cache refreshed on write. Never add to running totals. No pageview id ⇒ `_legacy` key (last write wins, ordered by session_seconds).
 - Clicks: count via `admin/actions.ts` (`collapseActions`), never `COUNT(*)` over events; one action can be click_target+open_overlay or click_target+click_link.
+- E2E waits for real collector summaries before leaving each section. `E2E_OBSERVER_DELAY_MS=5000` stresses delayed browser visibility callbacks; fixed sleeps missed Projects in that case.
+- Linux E2E clears DISPLAY/WAYLAND_DISPLAY only for the launched headless browsers. With inherited WSLg values, a blank page reproduced 0 RAF/IntersectionObserver callbacks; clearing them restored ~60fps. GPU flags alone did not fix it.

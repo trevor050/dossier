@@ -161,7 +161,7 @@ npm run typecheck
 npm run demo         # dashboard on fake data at localhost:8787
 ```
 
-`node scripts/e2e.mjs` drives a real Chromium through the sample site and checks the result through the admin API (needs `npm run demo` or `dossier serve --sample` running). `node scripts/screenshots.mjs` regenerates the images above from the demo.
+`node scripts/e2e.mjs` drives a real Chromium through the sample site and checks the result through the admin API (needs `npm run demo` or `dossier serve --sample` running). `E2E_OBSERVER_DELAY_MS=5000 node scripts/e2e.mjs` also checks delayed visibility callbacks. `node scripts/screenshots.mjs` regenerates the images above from the demo.
 
 ## License
 
