@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22, 24, 26]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm test
+
+  postgres:
+    # Same migrations and API against a real Postgres server, not just PGlite.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dossier
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/dossier
+      DOSSIER_ADMIN_TOKEN: ci-admin-token-0123456789
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: node dist/cli/index.js migrate
+      - run: node dist/cli/index.js migrate # idempotent
+      - name: Collect an event and read it back
+        run: |
+          node dist/cli/index.js serve --port 8787 &
+          for i in $(seq 1 30); do curl -sf localhost:8787/api/collect -o /dev/null && break; sleep 1; done
+          curl -sf -X POST localhost:8787/api/collect \
+            -H 'origin: http://localhost:8787' -H 'accept-language: en-US' \
+            -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' \
+            -d '{"vid":"ci-visitor-1","sid":"ci-session-1","ref_tag":"ci-link","events":[{"type":"visit","seq":0}],"summary":{"active_seconds":12}}'
+          curl -sf "localhost:8787/api/admin?api=overview&days=1" -H "authorization: Bearer $DOSSIER_ADMIN_TOKEN" | tee overview.json
+          grep -q '"ci-link"' overview.json
+      - run: node dist/cli/index.js prune
+
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm pack --dry-run

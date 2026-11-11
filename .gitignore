@@ -1,7 +1,12 @@
 node_modules
 dist
+coverage
+.local
+src/generated
 .env
 .env.*
 !.env.example
 .vercel
 .DS_Store
+*.tgz
+dashboard/world.gen.ts

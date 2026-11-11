@@ -2,13 +2,15 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
+    "rootDir": "src",
     "outDir": "dist",
-    "rootDir": ".",
-    "allowImportingTsExtensions": false,
     "declaration": true,
-    "declarationMap": false,
-    "sourceMap": false,
-    "stripInternal": false
+    "sourceMap": false
   },
-  "include": ["api/**/*.ts", "server/**/*.ts", "src/**/*.ts"]
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "src/chunks"
+  ]
 }

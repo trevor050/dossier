@@ -1,54 +1,86 @@
 {
   "name": "@trevor050/dossier",
-  "private": false,
-  "version": "0.1.0",
-  "type": "module",
+  "version": "0.2.1",
+  "description": "Self-hosted, person-level analytics for small sites: see who opened the link you sent, what they looked at, and whether they came back.",
+  "keywords": [
+    "analytics",
+    "self-hosted",
+    "session-replay",
+    "postgres",
+    "vercel",
+    "portfolio"
+  ],
   "license": "MIT",
+  "author": "trevor050",
+  "homepage": "https://github.com/trevor050/dossier#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/trevor050/dossier.git"
+    "url": "git+https://github.com/trevor050/dossier.git"
   },
-  "scripts": {
-    "dev": "vercel dev",
-    "build": "tsc -p tsconfig.build.json",
-    "prepare": "npm run build",
-    "prepack": "npm run build",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run typecheck"
+  "bugs": "https://github.com/trevor050/dossier/issues",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
   },
-  "files": [
-    "dist"
-  ],
+  "bin": {
+    "dossier": "./dist/cli/index.js"
+  },
   "exports": {
     "./client": {
-      "types": "./dist/src/tracking/index.d.ts",
-      "default": "./dist/src/tracking/index.js"
+      "types": "./dist/client/index.d.ts",
+      "default": "./dist/client/index.js"
     },
-    "./client/*": {
-      "types": "./dist/src/tracking/*.d.ts",
-      "default": "./dist/src/tracking/*.js"
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "default": "./dist/server/index.js"
     },
-    "./api/*": {
-      "types": "./dist/api/*.d.ts",
-      "default": "./dist/api/*.js"
+    "./vercel/collect": {
+      "types": "./dist/vercel/collect.d.ts",
+      "default": "./dist/vercel/collect.js"
     },
-    "./api/admin/*": {
-      "types": "./dist/api/admin/*.d.ts",
-      "default": "./dist/api/admin/*.js"
+    "./vercel/replay": {
+      "types": "./dist/vercel/replay.d.ts",
+      "default": "./dist/vercel/replay.js"
     },
-    "./server/*": {
-      "types": "./dist/server/*.d.ts",
-      "default": "./dist/server/*.js"
-    }
+    "./vercel/admin": {
+      "types": "./dist/vercel/admin.d.ts",
+      "default": "./dist/vercel/admin.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.map"
+  ],
+  "scripts": {
+    "build": "node scripts/build-assets.mjs && tsc -p tsconfig.build.json && node scripts/postbuild.mjs",
+    "build:assets": "node scripts/build-assets.mjs",
+    "typecheck": "node scripts/build-assets.mjs --if-missing && tsc -p tsconfig.json --noEmit",
+    "test": "node scripts/build-assets.mjs --if-missing && vitest run",
+    "demo": "npm run build && node dist/cli/index.js demo",
+    "prepare": "npm run build",
+    "prepack": "npm run build"
   },
   "dependencies": {
-    "@fingerprintjs/fingerprintjs": "^5.0.1",
-    "pg": "^8.17.1",
-    "rrweb": "^2.0.0-alpha.4"
+    "pg": "^8.23.1"
+  },
+  "optionalDependencies": {
+    "@electric-sql/pglite": "^0.5.16"
   },
   "devDependencies": {
-    "@types/node": "^25.0.9",
-    "@types/pg": "^8.16.0",
-    "typescript": "~5.9.3"
+    "@fingerprintjs/fingerprintjs": "^5.3.0",
+    "@rrweb/record": "^2.2.2",
+    "@types/node": "^24.10.1",
+    "@types/pg": "^8.15.6",
+    "d3-geo": "^3.1.2",
+    "esbuild": "^0.28.2",
+    "happy-dom": "^21.0.4",
+    "playwright-core": "^1.65.0",
+    "preact": "^11.2.0",
+    "rrweb-player": "^2.2.2",
+    "topojson-client": "^3.1.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.12",
+    "world-atlas": "^2.0.2"
   }
 }

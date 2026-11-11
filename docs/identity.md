@@ -1,105 +1,63 @@
-# Identity & Fingerprinting
+# How visits are grouped into people
 
-Dossier is designed for **small-audience** sites where you want to answer questions like:
+There are two ways a visit gets a name in Dossier.
 
-- “Did the same recruiter come back?”
-- “Which sessions probably belong to the same person?”
+## 1. Named links (reliable)
 
-This doc explains what Dossier does *today* to connect sessions/visitors, why it sometimes links “too well” (VPN/NAT), and how we plan to improve it.
+You create a link per recipient in the dashboard. Each has a readable slug (`?to=admissions-office`) and an opaque code (`?to=k7m2xq4`); both point to the same link. The tracker reads the tag, removes it from the address bar, and keeps it in localStorage so return visits from the same browser are attributed too.
 
-## Terminology
+Tags that don't match a link are kept as-is and shown by name (useful for ad-hoc `?to=twitter`). Creating a link later with that slug claims those earlier visits.
 
-- **Session**: one browsing session (stored in `sessions`, keyed by `sid`)
-- **Visitor**: a long-lived entity ID (stored in `visitors`, keyed by `vid`)
-- **Signal**: a piece of evidence used to connect sessions/visitors (cookie id, fingerprint id, IP)
-- **Cluster**: an *admin-side* grouping of visitors based on shared signals (stored in `visitor_groups`)
+If a recipient forwards the link, each new browser shows up as another person under the same link. That's usually what you want to know.
 
-## What gets generated client-side
+## 2. Inference (a good guess)
 
-From `src/tracking/telemetry.ts`:
+Without a link, Dossier connects visitor ids through a small graph of **signals**:
 
-- `sid` (session id): stored in `sessionStorage` (new per browser session)
-- `vid` (visitor id): stored in `localStorage` (persists across sessions on that device/browser profile)
-- `scid` (session cookie id): stored as a browser cookie (used as a server-side joining signal)
-- `fpid` (fingerprint id): from `@fingerprintjs/fingerprintjs` and stored in `localStorage` (optional via `fingerprinting: false`)
+| Node | Source | Notes |
+| --- | --- | --- |
+| `vid:` | Random id in localStorage | One per browser profile |
+| `scid:` | First-party session cookie | Survives a localStorage clear within one browser session |
+| `fp:` | FingerprintJS open source | Only with `fingerprint: true` |
+| `ipua:` | IP address + hashed user agent | IP is never a node by itself |
 
-Important: **incognito/private browsing** usually creates a fresh storage bucket, so `vid`, `scid`, and `fpid` often reset. However, behavior varies by browser and settings.
+Each request adds edges between the signals it carried, with a base weight and a half-life:
 
-## What gets generated server-side
+| Edge | Weight | Half-life |
+| --- | --- | --- |
+| visitor id ↔ session cookie | 0.95 | 180 days |
+| session cookie ↔ fingerprint | 0.85 | 90 days |
+| visitor id ↔ fingerprint | 0.75 | 45 days |
+| session cookie ↔ IP+UA | 0.35 | 2 hours |
+| fingerprint ↔ IP+UA | 0.25 | 2 hours |
+| visitor id ↔ IP+UA | 0.20 | 1 hour |
 
-From ingest (`api/collect.ts`):
+An edge's effective weight is `weight × 0.5^(age / half-life)`.
 
-- `ip` is derived from the request and stored on the session (`sessions.ip`)
-- IP history is recorded in `session_ips` (`sid` + `ip` with hit counts)
+**Confidence that two visitor ids are the same person** is the larger of:
 
-This means IP can connect sessions even if the client is in private browsing (because the server still sees the IP).
+- the strongest path between them, where a path's strength is the **product** of its edges (a chain is only as strong as its weakest links), and
+- the **noisy-or** of the independent two-hop paths through each signal they share directly: `1 − (1 − p₁)(1 − p₂)…`
 
-## How linking works today (current behavior)
+Paths don't pass through other visitor ids, so A ~ B and B ~ C doesn't automatically mean A ~ C; it has to be earned through shared signals. Visitor ids at or above `DOSSIER_LINK_THRESHOLD` (default 0.5) are grouped into one person.
 
-### 1) Identity graph (probabilistic)
+What that means in practice:
 
-Dossier writes weighted edges into `identity_edges` on ingest (non-bot only) and resolves identity by walking the graph with a confidence threshold.
+- Same session cookie: 0.95 × 0.95 ≈ 0.90. Grouped.
+- Same fresh fingerprint: 0.75 × 0.75 ≈ 0.56. Grouped while recent.
+- Same IP and browser, nothing else: 0.2 × 0.2 = 0.04. Not grouped. A dorm, an office or a VPN exit is not a person.
 
-Signals are modeled as **nodes** like:
+The person page has a "How these visits were grouped" section showing the evidence and confidence for each pair.
 
-- `vid:<vid>`
-- `scid:<cookie-id>`
-- `fp:<fingerprint-id>`
-- `ipua:<ip>|<uaHash>` (IP is never used alone)
+Bots never write identity edges.
 
-Edges have:
+### Changes from 0.1
 
-- `weight` (0..1) — base strength of that signal relationship
-- `decay_lambda` — time-decay rate (older evidence becomes less meaningful)
+Dossier 0.1 combined edges *along* a path with noisy-or, so a chain of weak IP matches became more confident the longer it got. Paths now multiply, and noisy-or is only used across independent signals. Edge data in existing databases is compatible; grouping just becomes more conservative.
 
-At query time, each edge uses an *effective weight*:
+## Limits
 
-`effective = weight * exp(-decay_lambda * age_seconds)`
-
-### 2) Evidence combination
-
-When multiple independent signals connect two visitors, Dossier combines evidence using a “noisy-or” model:
-
-`conf' = 1 - (1-conf) * (1-effective)`
-
-This increases confidence as more evidence accumulates.
-
-### 3) “Linked visitors” in the dashboard
-
-The dashboard shows the top related visitors above the configured confidence threshold, plus which signal types contributed (cookie / fingerprint / ip+ua).
-
-## Why VPN + incognito can still link
-
-If a VPN provider assigns you an exit IP that you also used in other sessions (or Dossier test sessions), the system links by **shared IP**.
-
-This is not “over-fingerprinting”. It’s the opposite: it’s a *low-quality* signal that can be strong in low-traffic environments.
-
-In general:
-
-- **IP is powerful but noisy** (VPNs, NAT, carriers, corporate networks)
-- **Fingerprint is powerful but can be degraded** (iOS Safari/WebKit reduces entropy)
-- **Cookies are powerful but often reset in private browsing**
-
-## Recommended defaults (for small-audience sites)
-
-If you want fewer false links:
-
-- Treat **IP-only** matches as “weak” evidence.
-- Prefer links that include **fingerprint_id** and/or **cookie id**.
-- Add time windows to IP matches (e.g. “same IP within 24h”) to reduce stale linking.
-
-Current Dossier defaults reflect this:
-
-- IP is never a standalone signal node; it is only used as `ip+ua` and decays quickly.
-- Bot sessions are excluded from the identity graph.
-
-## Privacy + ethics
-
-Dossier is **first-party** (your domain, your database). Still, identity linking can be sensitive.
-
-Recommendations:
-
-- Use replay sparingly and keep `maskAllInputs` enabled.
-- Set retention (and document it).
-- Add clear disclosure if you use fingerprinting / replay.
-- Avoid linking across *different sites* by default.
+- Private/incognito windows usually start with empty storage, so without a link or fingerprint they look like a new person.
+- Fingerprints are less stable on iOS Safari and in privacy-focused browsers.
+- Shared devices look like one person.
+- The dashboard groups the visitors in the selected time range; very old evidence decays away by design.
