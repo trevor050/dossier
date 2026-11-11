@@ -74,6 +74,15 @@ export async function readJson(req: Request, maxBytes: number): Promise<unknown>
   }
 }
 
+/** Admin commands accept JSON objects, never null, arrays or primitives. */
+export async function readJsonObject(req: Request, maxBytes: number): Promise<Record<string, unknown>> {
+  const body = await readJson(req, maxBytes);
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+    throw new HttpError(400, 'body must be an object');
+  }
+  return body as Record<string, unknown>;
+}
+
 const BASE_HEADERS: Record<string, string> = {
   'x-content-type-options': 'nosniff',
 };

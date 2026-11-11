@@ -1,7 +1,7 @@
 import { ADMIN_ASSETS } from '../../generated/admin-assets.js';
 import { getConfig, MIN_ADMIN_TOKEN_LENGTH, type DossierConfig } from '../config.js';
 import { getDb, type Db } from '../db.js';
-import { clientIp, HttpError, json, logError, readJson, text, type Handler, type RequestContext } from '../http.js';
+import { clientIp, HttpError, json, logError, readJsonObject, text, type Handler, type RequestContext } from '../http.js';
 import { createLink, deleteLink, updateLink } from '../links.js';
 import { assertSchemaReady, SchemaNotReadyError } from '../migrations.js';
 import { deleteVisitors, getSettings, pruneExpired, updateSettings } from '../retention.js';
@@ -159,7 +159,7 @@ export function createAdminHandler(options: AdminOptions = {}): Handler {
         if (!loginLimiter.take(clientIp(req, ctx) ?? 'unknown')) return json({ error: 'too_many_attempts' }, { status: 429 });
         const token = config.adminToken;
         if (!token || token.length < MIN_ADMIN_TOKEN_LENGTH) return json({ error: 'not_configured' }, { status: 503 });
-        const body = (await readJson(req, 4096)) as { token?: unknown };
+        const body = await readJsonObject(req, 4096);
         if (typeof body.token !== 'string' || !safeEqual(body.token, token)) {
           return json({ error: 'invalid_token' }, { status: 401 });
         }
@@ -217,7 +217,7 @@ export function createAdminHandler(options: AdminOptions = {}): Handler {
       if (demo && ['delete', 'prune', 'settings'].includes(route)) {
         return json({ error: 'Disabled in demo mode' }, { status: 403 });
       }
-      const body = (await readJson(req, 16_384)) as Record<string, unknown>;
+      const body = await readJsonObject(req, 16_384);
       switch (route) {
         case 'links':
           try {
